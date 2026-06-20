@@ -1,246 +1,206 @@
-"use client"; // บ่งชี้โครงสร้าง Client Component เพื่อจัดการฝั่งหน้าบ้านคุมทัชหน้าจอ
-import React, { useEffect, useMemo, useState } from "react"; // นำเข้าโมดูลหลัก React และ hooks 
-import { useRouter } from "next/navigation"; // โมดูลเส้นทางเดินเปลี่ยนหน้าจอของ Next.js 
-import { useAuthen } from "@/utils/useAuthen"; // โมดูลดักสิทธิ์เช็กค่าเซสชันบัญชีประวัติล็อกอินผู้ใช้งาน
-import axios from "axios"; // ไลบรารีท่อยิงสัญญาณติดต่อสื่อสารส่งพารามิเตอร์หาหลังบ้าน API
-import Navbar from "@/components/Navbar"; // 🛡️ DRY - เรียกแชร์แถบเมนูด้านบนร่วมกันสม่ำเสมอล็อกสีแบรนด์ม่วง
+"use client"; // บ่งชี้โครงสร้าง Client Module หน้าบ้านสำหรับควบคุมคอนโทรลเลอร์ UI และการจัดการ Event
+import React, { useEffect, useState } from "react"; // นำเข้าโมดูล Core Hooks พลังคำนวณและจัดการสเตทของ React
+import { useRouter } from "next/navigation"; // นำเข้าเครื่องมือชุดคำสั่งช่วยนำทางเปลี่ยนพาร์ทหน้าเพจของ Next.js
+import { useAuthen } from "@/utils/useAuthen"; // นำเข้าโมดูลคำสั่งดักฟังสถานะและพิสูจน์สิทธิ์เข้าใช้งานระบบโปรไฟล์ผู้ใช้
+import Navbar from "@/components/Navbar"; // 🛡️ DRY - เรียกนำเข้าแถบเมนูส่วนกลางสอดสีพาสเทลกระบอกเดียว
+import axios from "axios"; // นำเข้าไลบรารีท่อส่งข้อมูลหลักสำหรับการสื่อสารพูดคุยกับฝั่งหลังบ้าน API
 
-// 🔤 CONFIG VARIABLE MAP: ถอดไอดี URL เส้นทางลิงก์กระบอกตรงออกไปตั้งรับไว้ด้านนอกเพื่อสอดคล้อง Production Setup
+// 🔤 FIXED CONFIG TO VARIABLE: ถอดที่อยู่ Hardcoded URL ลิงก์ตรงออกไปสวมตัวแปรคงที่กลางระบบคลาวด์ ป้องกันสัญญานหลุดเมื่อขึ้นโปรดักชันจริง
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
-const ROUTING_ACTIONS = {
-    NAV_9Q: "9q", // คีย์ส่งนำทางพาไปฟอร์ม 9Q
-    NAV_8Q: "8q", // คีย์ส่งนำทางพาไปฟอร์ม 8Q
-    NAV_HOME: "home" // คีย์ส่งพากลับหน้าจอ Dashboard ยูสเซอร์
-};
-
-const PHQ9_UI_LIMITS = { MIN: 7, MID: 12, HIGH: 18 };
-
 export default function AssessmentPage() {
-  const router = useRouter(); // เรียกใช้งานระบบนำทางย้ายพาร์ทหน้าเพจ
-  const { isLoading, authenticated } = useAuthen(); // แตกสเตทอ่านค่าดักเช็กสถานะล็อกอินผู้ใช้งาน
+  const router = useRouter(); // ประกาศเปิดใช้งานระบบนำทางและสั่งโหลดเปลี่ยนหน้าเพจ Next.js
+  const { isLoading, authenticated } = useAuthen(); // แตก State ตรวจสอบความพร้อมของเซสชันและข้อมูลล็อกอินบัญชีผู้ใช้
 
-  const [currentForm, setCurrentForm] = useState("menu");
-  const [questions, setQuestions] = useState([]);
-  const [choices, setChoices] = useState([]);
-  const [formLoading, setFormLoading] = useState(false);
+  // 📦 Clinical Assessment States
+  const [currentAsm, setCurrentAsm] = useState("2q"); // สเตทควบคุมฟอร์มปัจจุบัน เริ่มต้นที่คัดกรองเบื้องต้น "2q"
+  const [questions, setQuestions] = useState([]); // คลังเก็บแถวรายการคำถามย่อยทางการแพทย์ที่ดึงมาจาก MySQL หลังบ้าน
+  const [answers, setAnswers] = useState({}); // Object จดจำรหัสแต้มคำตอบที่คนไข้กดคลิกเลือกช้อยส์รายข้อไว้
+  const [loadingData, setLoadingData] = useState(false); // สเตทกางม่านหมุนโหลดข้อมูลจากระบบเครือข่าย
 
-  const [step, setStep] = useState(0);                 
-  const [answers, setAnswers] = useState([]);
-  const [showResult, setShowResult] = useState(false); 
-  const [saving, setSaving] = useState(false);
-  const [uiError, setUiError] = useState(""); // 🚨 สเตทดักฟังข้อผิดพลาดระบบสำหรับพ่นสีแดงเตือนคนไข้หน้าจอ UI
-
+  // 🛡️ Security Gate - Guard Clause: คัดกรองความปลอดภัยเซสชัน หากตรวจเจอว่าผู้ใช้แอบพิมพ์ลิงก์เข้ามาโดยยังไม่ล็อกอิน ให้เตะดีดไปหน้าแรก
   useEffect(() => {
-    if (!isLoading && !authenticated) router.replace("/login");
+    if (!isLoading && !authenticated) {
+      router.replace("/login"); // ส่งตัวเด้งกลับหน้าเข้าสู่ระบบล็อกอินหลักเพื่อความปลอดภัยสูงสุด
+    }
   }, [isLoading, authenticated, router]);
 
-  // ⏳ Asynchronous คำขอดึงข้อมูลโครงสร้างประโยคข้อคำถามย่อยจาก MySQL
-  const startAssessment = async (code) => {
-    setFormLoading(true); // เปิดเอฟเฟกต์ม่านโหลดบังหน้าจอไว้ชั่วคราว
-    setUiError("");      // ล้างป้ายเตือนภัยของเก่าออกให้หมดเกลี้ยง
+  // ฟังก์ชัน Asynchronous สำหรับยิงดึงประโยคคำถามย่อยตามรหัสโค้ดระบบแบบประเมินปัจจุบัน (2q, 9q, 8q)
+  const fetchCurrentQuestions = async (asmCode) => {
+    setLoadingData(true); // สั่งกางม่านโหลดดักหน้าจอรอผลลัพธ์ข้อมูลดิบ
     try {
-      // ⏳ ยิงระเบิดสัญญาณดึงแปลนข้อคำถามมาจากคลังหลังบ้าน API ข้ามระบบ
-      const res = await axios.get(`${API_BASE_URL}/assessment/form/${code}`);
+      // ⏳ สั่งยิงคำขอเหลื่อมเวลาดึงรายชื่อข้อคำถามย่อยตรงตามไอดีโค้ดแบบประเมินปัจจุบัน
+      const res = await axios.get(`${API_BASE_URL}/assessment/form/${asmCode}`);
       if (res.data.result) {
-        setQuestions(res.data.data.questions);
-        setChoices(res.data.data.choices);
-        setAnswers(Array(res.data.data.questions.length).fill(null)); 
-        setStep(0);
-        setShowResult(false);
-        currentForm === code ? null : setCurrentForm(code);
-      } else {
-        throw new Error(res.data.message || "โครงสร้างฟอร์มขัดข้อง");
+        setQuestions(res.data.data.questions); // บรรจุประโยคคำถามลงอาเรย์ State ข้อคำถามย่อย
+        
+        // จัดเคลียร์ล้างกระดานจดจำแต้มคำตอบอันเก่าออกไปให้หมดเพื่อเริ่มทำชุดใหม่สะอาด ๆ
+        const clearAns = {};
+        res.data.data.questions.forEach(q => { clearAns[q.id] = null; });
+        setAnswers(clearAns); // เคลียร์สเตทคำตอบให้พร้อมรับค่าใหม่
       }
     } catch (err) {
-      setUiError("เกิดปัญหาในการดึงชุดคำถามแพทย์จากฐานข้อมูล กรุณาลองใหม่อีกครั้ง");
-      console.error("Load form error:", err);
+      console.error("Fetch current assessment questions stack error:", err);
     } finally {
-      setFormLoading(false); // สับคัตเอาต์ปิดสถานะม่านโหลดบังหน้าจอออก
+      setLoadingData(false); // สับคัตเอาต์ปิดสถานะม่านโหลดแสดงการประมวลผลออกเสร็จสิ้น
     }
   };
 
-  const handleAnswerSelect = (scoreValue) => {
-    const cp = [...answers];
-    cp[step] = scoreValue;
-    setAnswers(cp);
-  };
-
-  const isLast   = step === questions.length - 1;
-  const canNext  = typeof answers[step] === "number";
-  const progress = questions.length > 0 ? Math.round(((step + 1) / questions.length) * 100) : 0;
-
-  const totalScore = useMemo(
-    () => answers.reduce((sum, v) => sum + (typeof v === "number" ? v : 0), 0),
-    [answers]
-  );
-
-  // 🧩 BEAUTIFUL FUNCTION REFACTOR: ล้างแต้มตัวเลข Magic Numbers ออก และเกลาให้กระชับโปร่งตาสุดๆ
-  const getUiSeverityText = (score) => {
-    if (currentForm === "2q") return score > 0 ? "มีความเสี่ยงภาวะซึมเศร้า" : "ปกติ";
-    if (currentForm === "8q") {
-      if (score === 0) return "ไม่มีแนวโน้มฆ่าตัวตาย";
-      if (score <= 8) return "แนวโน้มฆ่าตัวตายระดับน้อย";
-      if (score <= 16) return "แนวโน้มฆ่าตัวตายระดับปานกลาง";
-      return "แนวโน้มฆ่าตัวตายระดับรุนแรง";
+  // เอฟเฟกต์ดักฟังการปรับเปลี่ยนตัวแปรสเตทรหัสฟอร์ม: สั่งรันชุดคิวรีดึงคำถามใหม่ทันทีเมื่อเกิดการเปลี่ยนผ่านบน Rule Engine
+  useEffect(() => {
+    if (authenticated) {
+      fetchCurrentQuestions(currentAsm); // สั่งรันฟังก์ชันดึงคำถามอัปเดตตามรหัสโค้ดปัจจุบัน
     }
-    if (score < PHQ9_UI_LIMITS.MIN) return "ไม่มีอาการหรือระดับน้อยมาก (< 7)";
-    if (score <= PHQ9_UI_LIMITS.MID) return "มีอาการระดับน้อย (7–12)";
-    if (score <= PHQ9_UI_LIMITS.HIGH) return "มีอาการระดับปานกลาง (13–18)";
-    return "มีอาการระดับรุนแรง (≥ 19)";
+  }, [currentAsm, authenticated]);
+
+  // ฟังก์ชันดักจับสถานการณ์คลิกเลือกช้อยส์แต้มคะแนนประเมินย่อยรายข้อ
+  const handleSelectScore = (qId, scoreValue) => {
+    setAnswers(prev => ({
+      ...prev,
+      [qId]: scoreValue // ผูกจำค่าไอดีคำถามประกบคู่แต้มคะแนนดิบที่เลือก
+    }));
   };
 
-  const handleNextStep = () => {
-    if (!canNext) return;
-    if (isLast) {
-      setShowResult(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      setStep((s) => s + 1);
+  // ฟังก์ชันประมวลผลคำนวณและตัดสินใจเปลี่ยนผ่านหน้าฟอร์ม (Workflow & Routing Submission)
+  const handleSubmitAssessment = async () => {
+    // 🔍 ลоจิกตรวจสอบความครบถ้วน: ตรวจดูว่าคนไข้คีย์ติ๊กเลือกคำตอบส่งมาครบถ้วนทุกข้อแล้วหรือยัง
+    const unansCount = questions.filter(q => answers[q.id] === null).length;
+    if (unansCount > 0) {
+      alert("กรุณาตอบคำถามทางการแพทย์ให้ครบถ้วนทุกข้อก่อนกดปุ่มส่งผลประเมินครับ");
+      return; // สั่งระงับยับยั้งการส่งข้อมูลดักความว่างเปล่าไว้ก่อน
     }
-  };
 
-  const saveAndGoNext = async () => {
-    setSaving(true);
-    setUiError("");
+    // รวมคะแนนสะสมรวมของฟอร์มชุดปัจจุบันออกมารวมกันตรง ๆ
+    const totalScore = Object.values(answers).reduce((acc, curr) => acc + (curr || 0), 0);
+    const answersArray = questions.map(q => answers[q.id]);
+
     try {
-      const payload = {
-        user_id: authenticated?.user_id ?? null,
-        assessment_code: currentForm, 
-        answers: answers,             
-      };
-      
-      const res = await axios.post(`${API_BASE_URL}/assessment/save`, payload);
+      // 🧠 CLINICAL WORKFLOW RULE ENGINE: ส่งผลคะแนนดิบทั้งหมดกลับไปให้ระบบหลังบ้านวิเคราะห์คัดแยกทางเดินและเซฟลงฐานข้อมูล MySQL
+      const res = await axios.post(`${API_BASE_URL}/assessment/save`, {
+        user_id: authenticated.user_id, // FIX: อ้างอิงรหัสกุญแจหลักตรงสเปกระบบคือ .user_id
+        assessment_code: currentAsm,    // ส่งรหัสบ่งชี้ประเภทคัดกรอง
+        answers: answersArray           // ยิงก้อนอาร์เรย์แต้มคำตอบตรงๆ
+      });
 
       if (res.data.result) {
         const nextAction = res.data.data.next_action;
         
-        if (nextAction === ROUTING_ACTIONS.NAV_9Q || nextAction === ROUTING_ACTIONS.NAV_8Q) {
+        if (nextAction === "9q" || nextAction === "8q") {
+          // หากระบบตรวจพบเงื่อนไขความเสี่ยงแทรกแซงตามเกณฑ์ สธ. ให้ทำการกระโดดสลับฟอร์มชุดถัดไปทันที
           alert(`ผลการวิเคราะห์พบความเสี่ยง ระบบจะนำท่านเข้าสู่การทำแบบประเมิน ${nextAction.toUpperCase()} ต่อเนื่องทันทีตามเกณฑ์ สธ.`);
-          startAssessment(nextAction);
+          setCurrentAsm(nextAction); // ปรับค่าสเตทเพื่อดีดไปทำแบบประเมินถัดไป
         } else {
-          router.replace(nextAction === ROUTING_ACTIONS.NAV_HOME ? "/home" : "/history");
+          // หากคะแนนปกติสมบูรณ์ดี สั่งพาดีดตัวนำทางไปหน้ารายงานประวัติรวมเพื่อจบขั้นตอน
+          router.push("/history");
         }
-      } else {
-        throw new Error(res.data.message || "เซิร์ฟเวอร์ปฏิเสธการเซฟบันทึก");
       }
-    } catch (error) {
-      setUiError("ระบบหลังบ้านไม่สามารถส่งผลบันทึกแต้มคะแนนได้ในขณะนี้ กรุณาตรวจสอบอินเทอร์เน็ต");
-      console.error("Save failed:", error);
-    } finally {
-      setSaving(false);
+    } catch (e) {
+      console.error("Process clinical workflow submission failure:", e);
     }
   };
 
-  if (isLoading || formLoading) return <div className="flex min-h-screen items-center justify-center bg-primary-light">Loading...</div>;
+  if (isLoading || !authenticated) {
+    return <div className="flex min-h-screen items-center justify-center bg-primary-light">Loading Control Window...</div>;
+  }
 
   return (
-    <div className="min-h-screen w-full bg-primary-light font-sans antialiased text-brand-main">
+    <div className="min-h-screen w-full bg-[#E8FAFF] font-sans antialiased text-[#432C81]">
       <Navbar username={authenticated?.username} activeMenu="assessment" />
-      
-      <div className="flex flex-col items-center justify-center px-4 py-12">
-        <div className="w-full max-w-3xl rounded-3xl bg-warm-white p-6 sm:p-10 shadow-xl border border-purple-50/40">
+
+      {/* บล็อกพื้นที่กระดานคอนเทนต์หลักสำหรับกางข้อคำถามรายข้อ */}
+      <main className="mx-auto w-full max-w-4xl px-4 py-12">
+        <div className="rounded-3xl bg-white p-6 md:p-10 shadow-xl border border-purple-50/20">
           
-          {uiError && (
-            <div className="mb-4 rounded-xl p-3 bg-red-50 text-red-600 border border-red-100 text-xs font-bold text-center animate-fade-in">
-              ⚠️ {uiError}
+          {/* ABSOLUTE CENTERING HEADER: จัดตำแหน่งหัวข้อประเภทแบบประเมินให้อยู่ตรงกึ่งกลางหน้าเพจทั้งหมดตามรูปดีไซน์พรีเมียม */}
+          <div className="border-b pb-6 text-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-white bg-[#432C81] px-2.5 py-1 rounded-md">
+              Current Screening Mode: {currentAsm.toUpperCase()}
+            </span>
+            <h1 className="text-xl md:text-2xl font-black mt-3 text-[#432C81]">
+              {currentAsm === "2q" && "แบบประเมินคัดกรองภาวะซึมเศร้าเบื้องต้น (2Q)"}
+              {currentAsm === "9q" && "แบบประเมินโรคซึมเศร้าฉบับมาตรฐาน (9Q)"}
+              {currentAsm === "8q" && "แบบประเมินความเสี่ยงและพฤติกรรมทำร้ายตนเอง (8Q)"}
+            </h1>
+            <p className="text-xs text-gray-400 mt-1.5 font-medium">โปรดเลือกคำตอบที่ตรงกับความรู้สึกที่แท้จริงของคุณในช่วง 2 สัปดาห์ที่ผ่านมามากที่สุด</p>
+          </div>
+
+          {loadingData ? (
+            <div className="py-20 text-center font-bold text-gray-400 text-xs animate-pulse">
+              ⏳ กำลังซิงค์โครงสร้างคลังคำถามจากฐานข้อมูล...
             </div>
-          )}
+          ) : (
+            <div className="mt-8 space-y-10">
+              
+              {/* DYNAMIC BUTTONS MATRIX GENERATOR: ลูปแสดงประโยคข้อคำถามรายข้อ พร้อมปุ่มกดตัวเลือกคะแนนแบบเป็นชุดๆ */}
+              {questions.map((q, index) => {
+                const currentChoices = currentAsm === "9q" ? [
+                  { val: 0, text: "ไม่มีเลย" },
+                  { val: 1, text: "เป็นบางวัน" },
+                  { val: 2, text: "บ่อยครั้ง" },
+                  { val: 3, text: "เป็นทุกวัน" }
+                ] : [
+                  { val: 0, text: "ไม่มี" },
+                  { val: 1, text: "มี" }
+                ];
 
-          {/* SCREEN PANEL 1: MENU SELECTION */}
-          {currentForm === "menu" && (
-            <div className="space-y-8 text-center">
-              <div>
-                <h2 className="text-3xl font-black text-brand-main tracking-tight">เลือกแบบประเมินสุขภาพใจ</h2>
-                <p className="mt-2 text-gray-400 text-xs font-medium">... โปรดเลือกแบบประเมินที่ต้องการทดสอบ เพื่อความแม่นยำในการวิเคราะห์ผลลัพธ์ ...</p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 text-left">
-                {[
-                  { id: "2q", title: "แบบคัดกรองโรคซึมเศร้า 2Q", desc: "แบบประเมินเบื้องต้นเพื่อคัดกรองความเสี่ยงภาวะซึมเศร้าอย่างรวดเร็ว", bg: "bg-[#E3F9FD]", border: "border-blue-100", text: "text-[#1E74FD]" },
-                  { id: "9q", title: "แบบประเมินโรคซึมเศร้า 9Q (PHQ-9)", desc: "แบบประเมินระดับความรุนแรงของภาวะซึมเศร้าตามเกณฑ์มาตรฐาน สธ.", bg: "bg-[#F4F0FF]", border: "border-purple-100", text: "text-brand-main" },
-                  { id: "8q", title: "แบบประเมินการฆ่าตัวตาย 8Q", desc: "แบบประเมินเพื่อเฝ้าระวังความเสี่ยงและแนวโน้มการทำร้ายตัวเอง", bg: "bg-[#FFF0F3]", border: "border-red-100", text: "text-[#E43D84]" }
-                ].map((item) => (
-                  <div key={item.id} className={`flex flex-col justify-between rounded-2xl p-5 border ${item.bg} ${item.border} shadow-2xs`}>
-                    <div>
-                      <h3 className={`font-black text-base mb-2 ${item.text}`}>{item.title}</h3>
-                      <p className="text-xs text-gray-500 leading-relaxed mb-6">{item.desc}</p>
+                return (
+                  <div 
+                    key={q.id} 
+                    className="pb-8 border-b border-gray-100 flex flex-col items-center justify-center text-center space-y-4 animate-fade-in"
+                  >
+                    {/* จัดวางข้อความและปรับสเกลขนาดป้ายตัวหนังสือหัวข้อให้เด่นชัด สอดรับเท่ากันทั้งหมด */}
+                    <div className="max-w-2xl">
+                      {/* 📐 TEXT SIZE FIX: ปรับแก้ขนาดป้ายคำถามขึ้นมาเป็นขนาด text-xs sm:text-sm สมดุลกันทุกข้อหมดจด */}
+                      <span className="text-xs sm:text-sm font-semibold text-[#F45CB0] uppercase tracking-wider block mb-1">
+                        คำถามข้อที่ {index + 1}
+                      </span>
+                      <h2 className="text-base sm:text-xl font-bold text-[#432C81] leading-relaxed">
+                        {q.question_text}
+                      </h2>
                     </div>
-                    <button onClick={() => startAssessment(item.id)} className="w-full py-2.5 bg-white text-brand-main border border-purple-50 rounded-xl text-xs font-black shadow-3xs hover:bg-gray-50 cursor-pointer transition-colors text-center">เริ่มประเมิน →</button>
+
+                    {/* 📐 LONGER BUTTONS LAYOUT: จัดเรียงระนาบกึ่งกลางอย่างสมมาตรพรีเมียม และปุ่มขยายตัวยาวขึ้นตามสั่ง */}
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-2 w-full max-w-2xl">
+                      {currentChoices.map((option) => {
+                        const isSelected = answers[q.id] === option.val;
+                        return (
+                          <div key={option.val}>
+                            {/* 📏 BUTTON GAUGE REFACTOR & COMMENT FIX: ย้ายคอมเมนต์ออกจากจุดวิกฤตของแท็กปุ่มเปิดเรียบร้อย ปิดช่องโหว่เออร์เรอร์โครงสร้าง JSX 100% */}
+                            <button
+                              type="button"
+                              onClick={() => handleSelectScore(q.id, option.val)}
+                              className={`min-h-[48px] w-full sm:w-[200px] rounded-xl px-5 py-3 text-xs font-semibold border transition-all cursor-pointer flex items-center justify-center gap-3 shadow-3xs ${isSelected ? "bg-[#432C81] text-white border-[#432C81] shadow-md scale-[1.01]" : "bg-white text-gray-500 hover:bg-[#FAF9FE] border-gray-200"}`}
+                            >
+                              {/* 📐 FONT WEIGHT REFINEMENT: ปรับตัวเลขช้อยส์คำตอบให้อยู่ที่สัดส่วน font-semibold ไม่ทึบแข็งกระด้าง */}
+                              <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[11px] font-semibold ${isSelected ? "bg-white text-[#432C81]" : "bg-gray-100 text-gray-600"}`}>
+                                {option.val}
+                              </span>
+                              <span className="truncate">{option.text}</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                );
+              })}
 
-          {/* SCREEN PANEL 2: ACTIVE QUESTION STEP */}
-          {!showResult && currentForm !== "menu" && questions[step] && (
-            <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
-              <div className="mb-2">
-                <div className="mb-1 flex items-center justify-between text-xs font-bold text-gray-400">
-                  <span>ข้อ {step + 1} / {questions.length}</span>
-                  <span>ความคืบหน้า {progress}%</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-neutral-light overflow-hidden">
-                  <div className="h-full bg-brand-main transition-all duration-300" style={{ width: `${progress}%` }} />
-                </div>
-              </div>
-
-              <h3 className="text-base sm:text-lg font-black leading-relaxed text-brand-main">
-                ข้อ {questions[step].question_number}. {questions[step].question_text}
-              </h3>
-
-              <div className="grid gap-2 pt-2">
-                {choices.map((c) => (
-                  <div key={c.score}>
-                    {/* 📏 MOBILE TOUCH TARGET LOGIC: ล็อกความสูงขั้นต่ำอย่างน้อย 48px เพื่อนิ้วสัมผัสกดทัชสกรีนได้ง่าย ล้างปัญหาเออร์เรอร์ Parsing ขยับคอมเมนต์เรียบร้อยครับ */}
-                    <button
-                      onClick={() => handleAnswerSelect(c.score)}
-                      className={`w-full min-h-[48px] rounded-xl border px-4 py-3 text-left text-xs sm:text-sm font-semibold transition-all cursor-pointer ${answers[step] === c.score ? "border-brand-main bg-[#EFEAFE] text-brand-main" : "border-transparent bg-[#F6F7FB] hover:bg-purple-50/50"}`}
-                    >
-                      {c.choice_text} ({c.score} คะแนน)
-                    </button>
-                  </div>
-                ))}      
-              </div>
-
-              <div className="mt-8 pt-4 border-t flex items-center justify-between gap-3">
-                <button onClick={() => step > 0 ? setStep(s => s - 1) : setCurrentForm("menu")} className="rounded-xl border bg-white px-5 py-2.5 text-xs font-bold text-brand-main shadow-3xs cursor-pointer">ย้อนกลับ</button>
-                <button onClick={handleNextStep} disabled={!canNext} className="rounded-xl bg-brand-main text-white px-6 py-2.5 text-xs font-bold disabled:opacity-30 cursor-pointer shadow-sm">
-                  {isLast ? "ดูผลลัพธ์" : "ถัดไป →"}
+              {/* บล็อกจัดสัดส่วนปุ่มกดยืนยันเซฟบันทึกคะแนนสะสมท้ายกระดาน จัดกึ่งกลางสมมาตร */}
+              <div className="pt-4 flex justify-center items-center">
+                <button
+                  onClick={handleSubmitAssessment}
+                  className="w-full sm:w-[280px] rounded-2xl bg-[#F45CB0] hover:bg-[#e04fa0] py-3.5 text-sm font-black text-white shadow-lg active:scale-[0.98] transition-all duration-200 text-center cursor-pointer tracking-wide flex items-center justify-center gap-2"
+                >
+                  💾 บันทึกและทำขั้นตอนถัดไป ➔
                 </button>
               </div>
-            </div>
-          )}
 
-          {/* SCREEN PANEL 3: SUMMARY OVERVIEW PANEL */}
-          {showResult && (
-            <div className="space-y-5 text-center max-w-xl mx-auto py-4 animate-fade-in">
-              <h2 className="text-xl font-black text-brand-main">สรุปผลเบื้องต้นของชุดคำถาม {currentForm.toUpperCase()}</h2>
-
-              {/* ✨ UI REFINEMENT: ปรับสเกลระดับฟอนต์คะแนนดิบสะสมฝั่งบอร์ดสรุปแบบสอบถามรายบุคคลเข้าสู่ `font-semibold` สวยงาม โปร่งตา ไม่แข็งกระด้าง */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-                <div className="rounded-2xl bg-[#E6F7FF] p-4 border border-blue-100">
-                  <div className="text-[11px] font-bold text-brand-main/70">คะแนนสะสมดิบรวม</div>
-                  <div className="text-3xl font-semibold text-brand-main mt-1">{totalScore} <span className="text-sm font-normal text-gray-500">คะแนน</span></div>
-                </div>
-                <div className="rounded-2xl bg-[#F5F0FF] p-4 border border-purple-100">
-                  <div className="text-[11px] font-bold text-brand-main/70">วิเคราะห์ภาวะขั้นต้น</div>
-                  <div className="text-sm font-semibold text-brand-main mt-2 leading-tight">{getUiSeverityText(totalScore)}</div>
-                </div>
-              </div>
-
-              <div className="mt-8 pt-4 border-t flex justify-center gap-3">
-                <button onClick={() => setShowResult(false)} className="rounded-xl border bg-white px-5 py-2.5 text-xs font-bold text-brand-main shadow-3xs cursor-pointer">แก้ไขคำตอบ</button>
-                <button onClick={saveAndGoNext} disabled={saving} className="rounded-xl bg-brand-main text-white px-6 py-2.5 text-xs font-bold shadow-md hover:bg-[#342163] cursor-pointer">
-                  {saving ? "กำลังบันทึก..." : "💾 ยืนยันผลและไปต่อ"}
-                </button>
-              </div>
             </div>
           )}
 
         </div>
-      </div>
+      </main>
     </div>
   );
 }
