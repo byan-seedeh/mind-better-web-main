@@ -33,7 +33,7 @@ export default function AdminPage() {
 
   // ⚙️ Clinical Workflow Rule Engine (ตรรกะแบบ BA ผูกการเปลี่ยนผ่านหน้าแบบไดนามิกจำลองไว้แสดงผลบน UI)
   const [routingRules, setRoutingRules] = useState([
-    { id: 1, source: "2q", threshold: 1, operator: ">=", target: "9q", label: "หากมีอาการเสี่ยงใน 2Q ให้ทำ 9Q ต่อเนื่อง" },
+    { id: 1, source: "2q", threshold: 1, operator: ">=", target: "9q", label: "หากมีอาการเสี่ยงใน 2Q ให้ทำ 9Q ต่อเนื่อ" },
     { id: 2, source: "9q", threshold: 7, operator: ">=", target: "8q", label: "หากซึมเศร้าระดับน้อยขึ้นไป (>=7) ให้คัดกรอง 8Q ทันที" },
     { id: 3, source: "9q", threshold: 7, operator: "<", target: "home", label: "หากคะแนน 9Q ปกติ (<7) ให้จบกระบวนการกลับหน้าแรก" }
   ]);
@@ -42,7 +42,7 @@ export default function AdminPage() {
   const [loadingData, setLoadingData] = useState(false); // สเตทเปิดม่านโหลดเพื่อรอบันทึกข้อมูลก้อนใหญ่จากฝั่ง API
 
   // States ควบคุมส่วนป็อปอัปและฟอร์ม CRUD สำหรับป้อนคำถามและฟอร์มใหม่
-  const [showAddForm, setShowAddForm] = useState(false); // สถานะเปิดปิดกล่องป้อนข้อมูลคำถามหรือฟอร์มชุดใหม่
+  const [showAddForm, setShowAddForm] = useState(false); // Status เปิดปิดกล่องป้อนข้อมูลคำถามหรือฟอร์มชุดใหม่
   const [editingId, setEditingId] = useState(null); // สถานะจดจำไอดีคำถามแถวที่ผู้ดูแลระบบกดคลิกปุ่มแก้ไขอยู่
   const [editingText, setEditingText] = useState(""); // สเตทเก็บตัวอักษรถ้อยคำประโยคคำถามใหม่ฉบับปรับปรุงแก้ไข
   const [editingThreshold, setEditingThreshold] = useState(0); // สเตทเก็บตัวเลขเกณฑ์แต้มคะแนนทดสอบที่แอดมินเลือกกรอกแก้
@@ -122,131 +122,129 @@ export default function AdminPage() {
   // 🧠 DYNAMIC OPERATIONS: MANAGEMENT OPERATIONS (CRUD)
   // ========================================================
 
-  // ฟังก์ชัน CRUD [CREATE]: บันทึกเพิ่มหัวข้อชุดแบบประเมินประเภทใหม่แกะกล่องบรรจุลงฐานข้อมูล MySQL
   const handleAddAssessment = async () => {
-    // กฎดักความสมบูรณ์ข้อมูล: หากพิมพ์ปล่อยฟิลด์รหัสย่อระบบหรือหัวชื่อฟอร์มว่างทิ้งไว้
     if (!newAsmCode.trim() || !newAsmTitle.trim()) {
-      alert("กรุณากรอกข้อมูลรหัสระบบย่อและชื่อฟอร์มให้ครบถ้วนก่อนสั่งเซฟ"); // เด้งป็อปอัปตักเตือนแอดมิน
-      return; // สั่งหยุดยกเลิกกระบวนการทำงานทันที (Guard Clause)
+      alert("กรุณากรอกข้อมูลรหัสระบบย่อและชื่อฟอร์มให้ครบถ้วนก่อนสั่งเซฟ");
+      return; 
     }
     try {
-      // ยิงส่งคำขอเพิ่มแถวข้อมูลฟอร์มหลักใหม่ แปลงรหัสย่อเป็นตัวพิมพ์เล็กเพื่อสมานลอจิกระบบเก็บข้อมูล
       const res = await axios.post(`${API_BASE_URL}/admin/assessments`, {
         code: newAsmCode.toLowerCase().trim(),
         title: newAsmTitle.trim(),
         description: newAsmDesc.trim()
       });
       if (res.data.result) {
-        fetchAssessments(); // สั่งรีโหลดเรียกซดข้อมูลคลังภาพรวมใหม่เพื่อให้เนื้อหาอัปเดตตรงปกบนแผง UI
-        setNewAsmCode(""); setNewAsmTitle(""); setNewAsmDesc(""); // ล้างคราบข้อความบนอินพุตช่องอินพุตฟิลด์ให้สะอาด
-        setShowAddForm(false); // สั่งพับปิดซ่อนกล่องแผงกรอกข้อมูลชุดฟอร์มใหม่เก็บลงไป
+        fetchAssessments(); 
+        setNewAsmCode(""); setNewAsmTitle(""); setNewAsmDesc(""); 
+        setShowAddForm(false); 
       }
     } catch (e) { console.error(e); }
   };
 
-  // ฟังก์ชัน CRUD [DELETE]: สั่งทำลายและลบหัวข้อแบบประเมินรวมถึงล้างทำลายคลังคำถามย่อยภายในออกตามรหัสไอดี
   const handleDeleteAssessment = async (id, title) => {
-    // ขึ้นกล่อง Double-Check ยืนยันมาตรการอันตรายตัด Cascade ป้องกันความเสียหายข้อมูลก่อนสั่งทำลาย
     if (confirm(`⚠️ ยืนยันการลบแบบประเมิน "${title}"? โครงสร้างคำถามภายในจะถูกลบทันที`)) {
       try {
-        // ส่งสัญญาณคำขอ DELETE นำแถวข้อมูลพาร์ทไอดีดังกล่าวออกจากระบบตารางฐานข้อมูลหลัก
         const res = await axios.delete(`${API_BASE_URL}/admin/assessments/${id}`);
         if (res.data.result) {
-          setSelectedAsm(null); // เคลียร์ปัดกวาดตัวแปรจดจำการเลือกหัวข้อฟอร์มออกชั่วคราว
-          fetchAssessments(); // โหลดคิวรีรายการคลังข้อมูลภาพรวมที่เหลืออัปเดตขึ้น UI ใหม่
+          setSelectedAsm(null); 
+          fetchAssessments(); 
         }
       } catch (e) { console.error(e); }
     }
   };
 
-  // ฟังก์ชัน CRUD [CREATE]: บันทึกเพิ่มประโยคข้อคำถามย่อยข้อใหม่เข้าไปผูกโครงสร้างสัมพันธ์ภายใต้ไอดีฟอร์มใหญ่
   const handleAddQuestion = async () => {
-    if (!newQText.trim() || !selectedAsm) return; // กรองสิทธิ์: หากข้อความปล่อยว่างหรือไม่มีเป้าหมายผูกแบบประเมิน ให้ระงับทันที
+    if (!newQText.trim() || !selectedAsm) return; 
     try {
-      // นำความยาวอาเรย์คำถามข้อเดิมมาบวกเพิ่มขึ้น 1 เพื่อสแตนด์บายตั้งลำดับเลขข้ออัตโนมัติ (question_number)
       const res = await axios.post(`${API_BASE_URL}/admin/questions`, {
         assessment_id: selectedAsm.id,
         question_number: questions.length + 1,
         question_text: newQText.trim()
       });
       if (res.data.result) {
-        fetchQuestions(selectedAsm.id); // สั่งรันดึงชุดข้อคำถามย่อยรอบปัจจุบันขึ้นมาอัปเดตจัดผังเรนเดอร์ใหม่บนหน้าจอ UI
-        setNewQText("");                // เคลียร์ค่าว่างในอินพุตช่องพิมพ์ประโยคคำถามย่อยให้โล่ง
-        setShowAddForm(false);          // สั่งปิดสไลด์พับกล่องแผงรับข้อมูลป้อนคำถามย่อยลงเก็บ
+        fetchQuestions(selectedAsm.id); 
+        setNewQText("");                
+        setShowAddForm(false);          
       }
     } catch (e) { console.error(e); }
   };
 
-  // ฟังก์ชัน CRUD [UPDATE]: สั่งแก้ไขและอัปเดตถ้อยคำเนื้อความในประโยคคำถามย่อยรายข้ออ้างอิงเลขไอดีข้อ
   const handleSaveQuestionEdit = async (qId) => {
-    if (!editingText.trim()) return; // ดักค่าว่าง: ถ้าลบข้อความออกจนว่างเปล่า ห้ามปล่อยสั่งบันทึกทับ
+    if (!editingText.trim()) return; 
     try {
-      // ยิงคำสั่ง PUT สั่งเปลี่ยนถ้อยคำทับประโยคคำถามเดิมในตาราง MySQL ตามรหัสเลขไอดีข้อคำถามตรงๆ
       const res = await axios.put(`${API_BASE_URL}/admin/questions/${qId}`, {
         question_text: editingText.trim()
       });
       if (res.data.result) {
-        fetchQuestions(selectedAsm.id); // เรียกซดอ่านชุดคำถามไฟล์ปัจจุบันขึ้นมาแสดงผลใหม่ตรงปกบนกระดานเพจ
-        setEditingId(null);             // ปลดล็อกเคลียร์สถานะไอดีการเลือกกรอกแก้ออกจากหน้าจอ UI
-        setEditingText("");             // ล้างค่าตัวหนังสือคงค้างในสเตทแก้ไขประโยค
+        fetchQuestions(selectedAsm.id); 
+        setEditingId(null);             
+        setEditingText("");             
       }
     } catch (e) { console.error(e); }
   };
 
-  // ฟังก์ชัน CRUD [DELETE]: สั่งลบและทำลายประโยคคำถามย่อยเดี่ยวข้อดังกล่าวออกจากตารางสารบบแอป
   const handleDeleteQuestion = async (qId) => {
-    // ถามทวนความปลอดภัยเพื่อป้องกันนิ้วผู้ดูแลระบบพลาดลั่นโดนปุ่มทำลายข้อมูลโดยอุบัติเหตุ
     if (confirm("คุณแน่ใจหรือไม่ที่จะลบข้อคำถามคำถามข้อนี้ออกจากระบบ?")) {
       try {
-        // ยิงสั่งลบแถวประโยคคำถามข้อดังกล่าวออกจากระบบตารางฐานข้อมูลทันทีอ้างอิงไอดีข้อ
         const res = await axios.delete(`${API_BASE_URL}/admin/questions/${qId}`);
-        if (res.data.result) fetchQuestions(selectedAsm.id); // คิวรีอัปเดตรายการคำถามที่คงเหลืออยู่มาเรนเดอร์ใหม่
+        if (res.data.result) fetchQuestions(selectedAsm.id); 
       } catch (e) { console.error(e); }
     }
   };
 
-  // ฟังก์ชันจัดเซฟบันทึกเกณฑ์ตัวเลขคะแนนทางการแพทย์บน Rule Engine หน้าบ้านจำลองของกระบวนการ BA
   const handleSaveRuleThreshold = (id) => {
-    // กวาดลูปอัปเดตเปลี่ยนค่าตัวเลข Threshold คะแนนชิ้นที่ระบุไอดีบนอาเรย์เงื่อนไขหน้าจอจำลอง
     const updatedRules = routingRules.map(rule => rule.id === id ? { ...rule, threshold: editingThreshold } : rule);
-    setRoutingRules(updatedRules); // ส่งค่าอาเรย์ชุดปรับปรุงล่าสุดบันทึกคืนกลับสเตทหลักหน้าบ้าน
-    setEditingId(null);            // ล้างปลดล็อกรหัสแก้ออก
-    alert("💾 อัปเดตเงื่อนไขเกณฑ์คะแนนบน Rule Engine สำเร็จ!"); // แสดงกล่องป็อปอัปยืนยันผลงาน
+    setRoutingRules(updatedRules); 
+    setEditingId(null);            
+    alert("💾 อัปเดตเงื่อนไขเกณฑ์คะแนนบน Rule Engine สำเร็จ!");
   };
 
-  // 📊 SoC & useMemo: แยกส่วนแยกหน้าที่ความรับผิดชอบลอจิกคํานวณยอดรวมสถิติเคสคนไข้ (KPI Block Summary)
+  // 📊 SoC & useMemo: แยกส่วนหน้าที่ความรับผิดชอบคํานวณยอดรวมสถิติเคสคนไข้ (KPI Block Summary)
   const dashboardKPI = useMemo(() => {
-    const totalCases = allUserLogs.length; // นับจำนวนแถวรวมของสถิติตัวเลขรายประวัติคัดกรองทั้งหมดในระบบฐานข้อมูล
-    // 🎨 PRIORITY COLOR MAPPING: คัดกรองนับเฉพาะเคสสัญญานอันตรายสีแดงที่ส่งเสียงเตือนระดับชั้นวิกฤตความเสี่ยงสูง (High Risk Alert)
+    const totalCases = allUserLogs.length; 
     const highRiskCases = allUserLogs.filter(log => 
       log.result_text?.includes("รุนแรง") || log.result_text?.includes("เสี่ยง")
     ).length;
-    return { totalCases, highRiskCases }; // ส่งออกตัวแปรสถิติฉบับคำนวณคลีนๆ ไปวางป้อนตาราง UI
+    return { totalCases, highRiskCases }; 
   }, [allUserLogs]);
 
   // ฟังก์ชันจัดเคลียร์กลไกล็อกเอาต์ผู้ดูแลระบบลบเซสชันถาวรตัวเครื่อง
   const handleAdminLogout = () => {
-    localStorage.removeItem("user"); // กวาดทำลายลบก้อนประวัติโปรไฟล์ส่วนตัวเซสชันออกให้เกลี้ยง
-    router.push("/login"); // สั่งเปลี่ยนเส้นทางนำทางดีดเด้งพากลับไปตั้งหลักเพจล็อกอินเริ่มต้น
+    localStorage.removeItem("user"); 
+    router.push("/login"); 
   };
 
-  // ดักฟัง: หากแอปกำลังซิงค์เช็กความพร้อมบัญชี หรือติดหน้าประมวลผลดึงไฟล์ข้อมูล ให้ขึ้นหลอดข้อความ Loading พ่นค้างดัก UI ไว้
-  if (isLoading || loadingData) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-primary-light">
-        <div className="text-sm font-bold text-brand-main animate-pulse">กำลังซิงค์ระบบฐานข้อมูลกลาง...</div>
-      </div>
-    );
-  }
+  const userLabel = authenticated?.username || "Admin";
 
   return (
     <div className="min-h-screen w-full bg-primary-light font-sans antialiased text-brand-main">
       
-      {/* ส่วนหัวแถบขอบบาร์ Header หลักประจำห้องควบคุม Command Room ของแอดมิน */}
-      <header className="sticky top-0 z-10 w-full bg-white/95 backdrop-blur border-b shadow-xs px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="text-base sm:text-lg font-black tracking-tight text-brand-main">🛡️ Admin Control Room</div>
-          <button onClick={handleAdminLogout} className="text-xs font-bold text-red-500 hover:text-red-700 cursor-pointer transition-colors">ออกจากระบบ</button>
+      {/* 🔄 TAB BAR ALIGNMENT FIX: ปรับปรุงโครงสร้างแถบบาร์ด้านบนให้แสดงผลเป็นรูปโปรไฟล์วงกลม และปุ่ม Logout วางคู่กันข้าง ๆ ตรง ๆ ทันทีตามระเบียบดีไซน์จริงของฝั่ง Frontend เป๊ะ */}
+      <header className="sticky top-0 z-10 w-full bg-white/90 backdrop-blur border-b">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+          
+          {/* ข้อความต้อนรับด้านซ้ายมือถอดรหัสไดนามิก */}
+          <div className="text-xl md:text-2xl font-bold text-[#432C81]">
+            👋 Hi {userLabel}!
+          </div>
+          
+          {/* กลไกแผงขวา: แสดงรูปวงกลมโปรไฟล์ และปุ่ม Logout ทันทีบนบาร์โดยตรงอย่างไร้รอยต่อ */}
+          <div className="flex items-center gap-3">
+            
+            {/* รูปภาพโปรไฟล์วงกลมมินิมอลตาม Correction Ledger หลัก */}
+            <div className="w-9 h-9 rounded-full bg-[#EFEAFE] border border-purple-100 flex items-center justify-center font-black text-xs text-[#432C81] overflow-hidden shadow-3xs">
+              <span className="uppercase">{userLabel.substring(0, 2)}</span>
+            </div>
+
+            {/* ปุ่ม Logout สีม่วงเข้ม วางประกบข้างคู่ขนานตรง ๆ บนแถบบาร์โดยไม่ต้องผ่านปุ่มกดคลิกซ่อนในดร็อปดาวน์ให้วุ่นวาย */}
+            <button
+              onClick={handleAdminLogout}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#432C81] hover:bg-[#F2EEFE] hover:text-[#342163] transition-colors cursor-pointer shadow-3xs text-center flex items-center justify-center"
+            >
+              Logout
+            </button>
+            
+          </div>
         </div>
       </header>
 
@@ -292,12 +290,12 @@ export default function AdminPage() {
             {activeTab === ADMIN_KEYS.TAB_DASHBOARD && (
               <div className="space-y-6 animate-fade-in">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* 📐 UI REFINEMENT CARD 1: ปรับแต่งสเกลตัวเลขอักษรจำนวนสะสมรวมลงมาอยู่ที่ระดับ `font-semibold` และหน่วยนับเป็น `font-normal` ละมุนตาตรงปกเข้าชุดหน้าจอประวัติคนไข้ */}
+                  {/* 📐 UI REFINEMENT CARD 1: ปรับแต่งสเกลตัวอักษรจำนวนครั้งสะสมรวมลงมาอยู่ที่ระดับ `font-semibold` และหน่วยนับเป็น `font-normal` สมส่วนตรงชุดหน้าจอประวัติคนไข้พอดีคำ */}
                   <div className="rounded-2xl p-5 bg-blue-50/60 border border-blue-100 shadow-3xs">
                     <div className="text-[11px] font-bold text-blue-600 uppercase">สถิติจำนวนการทำแบบประเมินรวม</div>
                     <div className="text-4xl font-semibold mt-1 text-brand-main">{dashboardKPI.totalCases} <span className="text-xs font-normal text-gray-400">ครั้ง</span></div>
                   </div>
-                  {/* 🔴 HIGH PRIORITY RED ALVERT CARD 2: ปรับสเกลตัวเลขนับเคสวิกฤตอันตรายความสำคัญสีแดงลงมาที่ขนาดความหนา `font-semibold` คลีนช่องไฟระยะสายตาได้อย่างยอดเยี่ยมบาลานซ์สมส่วน */}
+                  {/* 🔴 HIGH PRIORITY RED ALERT CARD 2: ปรับสเกลตัวเลขนับเคสวิกฤตอันตรายความสำคัญสีแดงลงมาที่ขนาดความหนา `font-semibold` คลีนระยะช่องไฟสายตาได้อย่างสมส่วนสบายตา */}
                   <div className="rounded-2xl p-5 bg-red-50/60 border border-red-100 shadow-3xs animate-pulse">
                     <div className="text-[11px] font-bold text-red-500 uppercase">🚨 จำนวนเคสกลุ่มเสี่ยงวิกฤต (High Risk)</div>
                     <div className="text-4xl font-semibold mt-1 text-red-600">{dashboardKPI.highRiskCases} <span className="text-xs font-normal text-gray-400">ราย</span></div>
@@ -336,7 +334,6 @@ export default function AdminPage() {
                       </div>
                       <div className="mt-5 pt-3 border-t border-gray-100 flex justify-between items-center">
                         <button onClick={() => { setSelectedAsm(asm); setActiveTab(ADMIN_KEYS.TAB_QUESTIONS); }} className="text-xs font-bold text-purple-700 hover:underline cursor-pointer">📂 จัดการคำถาม</button>
-                        {/* มาตรการล็อกป้องกัน: ล็อกพาร์ทระงับปุ่มทำลายล้างฟอร์มหลักมาตรฐาน 2Q/9Q/8Q ออกถาวร ป้องกันข้อมูลพังเสียหาย */}
                         {!["2q", "9q", "8q"].includes(asm.code.toLowerCase()) && (
                           <button onClick={() => handleDeleteAssessment(asm.id, asm.title)} className="text-xs font-bold text-red-500 hover:text-red-700 cursor-pointer">ลบออก</button>
                         )}
@@ -434,8 +431,9 @@ export default function AdminPage() {
                               <button onClick={() => handleSaveRuleThreshold(rule.id)} className="bg-green-600 text-white rounded-lg px-2 py-1 text-[10px] font-bold shadow-xs">เซฟ</button>
                             </div>
                           ) : (
-                            // ✨ UI REFINEMENT DETIAL: ปรับแต้มคะแนนเงื่อนไข Rule Engine ฝั่งขวาลงมาเป็นความหนา `font-semibold` ให้สอดคล้องกันละมุนตาทั้งเพจ
-                            <span className="text-xs sm:text-sm font-semibold text-brand-main">{rule.operator} {rule.threshold} คะแนน</span>
+                            <div>
+                              <span className="text-xs sm:text-sm font-semibold text-brand-main">{rule.operator} {rule.threshold} คะแนน</span>
+                            </div>
                           )}
                         </div>
                         {editingId !== `rule-${rule.id}` && (
