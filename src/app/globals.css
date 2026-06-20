@@ -1,0 +1,38 @@
+/* 👑 ย้ายมาไว้บรรทัดแรกสุดของไฟล์เพื่อแก้เออร์เรอร์กฎ @import */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;900&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #D0F8FF;   /* Primary Background (สีฟ้าพาสเทลตามรูป) */
+  --foreground: #432C81;   /* Brand Primary Color (สีน้ำเงิน/ม่วงเข้มประจำแอป) */
+  
+  /* 🎨 3 สีย่อยเพิ่มเติมตามภาพโทนสีมินิมอล */
+  --color-secondary-bg: #F7F8F9; /* สีเทา/ขาวนวลอ่อนมาก */
+  --color-pure-white: #FFFDFD;   /* สีขาวบริสุทธิ์โทนอุ่น */
+  --color-brand-dark: #432C81;   /* ล็อกค่าสีเข้มไว้ใช้งาน */
+}
+
+@theme inline {
+  --font-sans: 'Poppins', var(--font-geist-sans), sans-serif;
+  
+  /* ลงทะเบียนชื่อสีย่อยให้เรียกใช้ง่ายด้วยคลาส Tailwind */
+  --color-primary-light: var(--background);
+  --color-brand-main: var(--foreground);
+  --color-neutral-light: var(--color-secondary-bg);
+  --color-warm-white: var(--color-pure-white);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ป้องกัน Dark Mode ของอุปกรณ์แอบเปลี่ยนสี เพื่อรักษาดีไซน์มินิมอลพาสเทล */
+    --background: #D0F8FF;
+    --foreground: #432C81;
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
