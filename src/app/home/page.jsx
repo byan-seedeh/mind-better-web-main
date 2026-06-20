@@ -1,5 +1,5 @@
 "use client"; // คอมไพล์ในฐานะ Client Module คุมความมีอยู่ฝั่งหน้าบ้าน
-import React from "react"; // นำเข้าโมดูลหลัก React 
+import React from "react"; // นำเข้าโมดูลหลัก React
 import { useRouter } from "next/navigation"; // โมดูลชุดคำสั่งนำทางย้ายสลับเพจหน้าต่าง Next.js
 import { useAuthen } from "@/utils/useAuthen"; // ชุดโมดูลดักสิทธิ์ล็อกอินคัดกรองความปลอดภัยเซสชันผู้ใช้
 import Navbar from "@/components/Navbar"; // 🛡️ DRY - เรียกนำเข้าแถบเมนูส่วนกลางสอดสีพาสเทลกระบอกเดียว
@@ -23,18 +23,20 @@ export default function HomePage() {
       {/* บล็อกจัดแสดงพื้นที่เนื้อหาหลักบน Dashboard หน้าต่างแอป */}
       <main className="mx-auto w-full max-w-6xl px-4 py-8 space-y-8">
         
-        {/* แผงกรอบ Hero แบนเนอร์ภาพหลักและปุ่มนำทางเข้าสู่การทำฟอร์มสุขภาพจิต */}
-        <div className="w-full rounded-3xl bg-white/70 border border-white p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center text-center">
+        {/* แผงกรอบ Hero แบนเนอร์ภาพหลักและปุ่มนำทางเข้าสู่การทำฟอร์มสุขภาพจิต - ปรับแต่งให้นุ่มนวลและภาพแผ่ได้เต็มพื้นที่ */}
+        <div className="w-full rounded-3xl bg-white/70 border border-white shadow-sm flex flex-col items-center overflow-hidden pb-8 sm:pb-10">
           
-          <div className="w-full max-w-2xl bg-white rounded-2xl overflow-hidden p-2 shadow-2xs">
+          {/* 🖼️ BANNER FULL WIDTH FIX: ล้างกล่องครอบเก่าออก และสั่งการให้รูปภาพขยายแผ่เต็มกว้าง 100% ของการ์ด (w-full) ใช้ object-cover เพื่อให้ภาพเต็มพื้นที่พอดีกรอบอย่างสวยงาม */}
+          <div className="w-full relative">
             <img 
               src="/assets/banner.png" 
-              className="w-full h-auto object-contain" 
+              className="w-full h-auto object-cover max-h-[320px] md:max-h-[380px]" 
               alt="ตรวจสุขภาพใจวันนี้ ฟรีไม่มีค่าใช้จ่าย" 
             />
           </div>
 
-          <div className="h-[30px]" />
+          {/* ระยะช่องไฟด้านล่างของรูปแบนเนอร์ก่อนถึงปุ่มกด */}
+          <div className="h-[25px] md:h-[35px]" />
 
           {/* ปุ่มเริ่มประเมิน: ตกแต่งขอบเหลี่ยมขอบมนด้วยสไตล์สากล rounded-2xl สัมผัสขั้นต่ำระดับพรีเมียม */}
           <button
