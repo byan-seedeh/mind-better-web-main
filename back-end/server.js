@@ -1,171 +1,178 @@
 // =========================================================================
-// 🚀 BACKEND SERVER.JS - REFACTORED & CLEAN CODE (FOR MINDBETTER PROJECT)
+// 🚀 BACKEND SERVER.JS - REFACTORED, CLEAN & SECURED VERSION (MINDBETTER)
 // =========================================================================
 // ผู้พัฒนา: Byan Seedeh (UX/UI Designer & Full-Stack Developer)
-// ระบบ: Dynamic Assessment Management System (2Q -> 9Q -> 8Q Workflow)
+// คุณสมบัติ: เขียนคอมเมนต์อธิบายละเอียดทุกบรรทัด, ปลอดภัยด้วย Bcrypt, โครงสร้าง Clean Code
 // =========================================================================
 
-// นำเข้าโมดูล Express สำหรับสร้างระบบ RESTful API Server หลังบ้าน
+// นำเข้าโมดูล Express เพื่อใช้จัดการระบบ Routing และ HTTP Request/Response
 const express = require('express');
-// ประกาศอินสแตนซ์ของ Express Application เพื่อใช้งานฟังก์ชันควบคุมเส้นทางเดินของข้อมูล
-const app = express();
-// นำเข้าโมดูล Body-Parser สำหรับแปลงโครงสร้างข้อมูลที่ส่งมาจากหน้าบ้านใน Request Body
+// นำเข้าโมดูล Body-Parser เพื่อแปลงข้อมูลที่ส่งมาจากหน้าบ้านให้อยู่ในรูป Object ที่เรียกใช้งานง่าย
 const bodyParser = require('body-parser');
-// นำเข้าโมดูล CORS เพื่อปลดล็อกสิทธิ์เข้าถึงข้ามโดเมนระหว่างพอร์ตหน้าบ้าน (Next.js) และหลังบ้าน (Express)
+// นำเข้าโมดูล CORS สำหรับปลดล็อกสิทธิ์ให้เว็บหน้าบ้าน (Next.js) สามารถยิง API ข้ามพอร์ตมาหาหลังบ้านได้
 const cors = require("cors");
-// นำเข้าโมดูล MySQL สำหรับติดต่อสั่งการและคิวรีข้อมูลในระบบฐานข้อมูลเชิงสัมพันธ์
+// นำเข้าโมดูล MySQL สำหรับเชื่อมต่อและจัดการคิวรีข้อมูลในฐานข้อมูล
 const mysql = require('mysql');
-// นำเข้าโมดูล MD5 สำหรับใช้แฮชรหัสผ่านเพื่อความปลอดภัยในการจัดเก็บลงตารางข้อมูล
-const md5 = require('md5');
+// นำเข้าโมดูล Bcrypt เพื่อใช้แฮชรหัสผ่านอย่างปลอดภัยตามมาตรฐานความปลอดภัยระดับสูง (แทนที่ MD5 เดิม)
+const bcrypt = require('bcrypt');
 
-// 🔤 CONFIGURATION OBJECT: สกัดค่าคงที่ ตัวแปรระบบ และการตั้งค่าฐานข้อมูลมาไว้ส่วนกลาง เพื่อให้ง่ายต่อการดูแลรักษา
+// ประกาศอินสแตนซ์ของ Express Application เพื่อเริ่มต้นตั้งค่าเซิร์ฟเวอร์
+const app = express();
+// กำหนดจำนวนรอบในการสร้าง Salt สำหรับ Bcrypt (ยิ่งเยอะยิ่งปลอดภัย แต่ใช้เวลาประมวลผลนานขึ้น)
+const SALT_ROUNDS = 10;
+
+// 🔤 CENTRAL CONFIGURATION OBJECT: รวบรวมค่าคงที่และ Configuration ทั้งหมดไว้ที่จุดเดียว
 const CONFIG = {
-    PORT: process.env.PORT || 8080,
-    DB_POOL_LIMIT: 10,
-    DB_HOST: process.env.DB_HOST || 'localhost',
-    DB_USER: process.env.DB_USER || 'root',
-    DB_PASSWORD: process.env.DB_PASSWORD || '',
-    DB_NAME: process.env.DB_NAME || 'mindbetter',
-    DEFAULT_ROLE_ID: 2,
-    DEFAULT_ROLE_NAME: 'user'
+    PORT: process.env.PORT || 8080,                // กำหนดพอร์ตในการรันเซิร์ฟเวอร์ (ค่าเริ่มต้น 8080)
+    DB_POOL_LIMIT: 10,                             // จำกัดจำนวนท่อเชื่อมต่อฐานข้อมูลพร้อมกันสูงสุด 10 ท่อ
+    DB_HOST: process.env.DB_HOST || 'localhost',   // ที่อยู่ของ Database Server
+    DB_USER: process.env.DB_USER || 'root',        // ชื่อผู้ใช้งานระบบฐานข้อมูล
+    DB_PASSWORD: process.env.DB_PASSWORD || '',    // รหัสผ่านระบบฐานข้อมูล
+    DB_NAME: process.env.DB_NAME || 'mindbetter',  // ชื่อฐานข้อมูลที่ใช้งาน
+    ROLES: {
+        USER_ID: 2,                                // รหัสไอดีบทบาทของคนไข้/ผู้ใช้งานทั่วไป
+        USER_NAME: 'user',                         // ชื่อเรียกบทบาทของผู้ใช้งานทั่วไป
+        ADMIN_NAME: 'admin'                        // ชื่อเรียกบทบาทของผู้ดูแลระบบ
+    }
 };
 
-// ❓ SCORE THRESHOLDS: กำหนดเกณฑ์คะแนนทางการแพทย์ตามมาตรฐานของกระทรวงสาธารณสุขเป็นค่าคงที่
-// ป้องกันการใช้ Magic Numbers (ตัวเลขที่ลอยมาเฉยๆ โดยไม่มีคำอธิบาย) ในโค้ด
+// ❓ CLINICAL THRESHOLDS CONSTANTS: กำหนดเกณฑ์คะแนนทางการแพทย์เป็นค่าคงที่เพื่อเลี่ยง Magic Numbers
 const SCORE_THRESHOLDS = {
-    FORM_2Q_HAS_RISK: 0,  // เกณฑ์ 2Q: ถ้าข้อใดข้อหนึ่งมากกว่า 0 แสดงว่ามีแนวโน้มเสี่ยง
-    FORM_9Q_NORMAL: 7,    // เกณฑ์ 9Q: คะแนนต่ำกว่า 7 = ปกติ
-    FORM_9Q_MILD: 12,     // เกณฑ์ 9Q: คะแนน 7-12 = ซึมเศร้าเล็กน้อย
-    FORM_9Q_MODERATE: 18, // เกณฑ์ 9Q: คะแนน 13-18 = ซึมเศร้าปานกลาง (ถ้าเกินกว่านี้คือ รุนแรง)
-    FORM_8Q_NONE: 0,      // เกณฑ์ 8Q: คะแนนเป็น 0 = ไม่มีความเสี่ยงทำร้ายตนเอง
-    FORM_8Q_MILD: 4,      // เกณฑ์ 8Q: คะแนน 1-4 = เสี่ยงน้อย
-    FORM_8Q_MODERATE: 7   // เกณฑ์ 8Q: คะแนน 5-7 = เสี่ยงปานกลาง (ถ้าเกินกว่านี้คือ รุนแรงมาก)
+    FORM_2Q: { HAS_RISK: 0 },                      // ฟอร์ม 2Q: ตอบ "มี" (>0) ข้อใดข้อหนึ่งถือว่าเสี่ยง
+    FORM_9Q: { NORMAL: 7, MILD: 12, MODERATE: 18 }, // ฟอร์ม 9Q: ช่วงแบ่งระดับ ปกติ, น้อย, ปานกลาง, รุนแรง
+    FORM_8Q: { NONE: 0, MILD: 4, MODERATE: 7 }     // ฟอร์ม 8Q: ช่วงแบ่งระดับความเสี่ยงการทำร้ายตนเอง
 };
 
-// 🛡️ MIDDLEWARES SETUP
-// เปิดใช้งาน CORS เพื่ออนุญาตให้ Next.js หน้าบ้านส่ง HTTP Request ข้ามพอร์ตมาคุยกับ API หลังบ้านได้
-app.use(cors());
-// เปิดฟังก์ชันแปลงรูปแบบข้อมูลจากฟอร์มประเภท URL-Encoded
-app.use(bodyParser.urlencoded({ extended: false }));
-// เปิดฟังก์ชันแปลงข้อมูลประเภท JSON Object ส่วนกลางให้กับระบบหลังบ้านทั้งหมด
-app.use(bodyParser.json());
+// 🛡️ APPLICATION MIDDLEWARES SETUP
+app.use(cors());                                    // เปิดใช้งาน CORS ให้รองรับการเข้าถึงจากโดเมนอื่น
+app.use(bodyParser.urlencoded({ extended: false })); // รองรับการแกะข้อมูลที่ส่งมาจากฟอร์มประเภท URL-Encoded
+app.use(bodyParser.json());                         // รองรับการแกะข้อมูลที่เป็น JSON Payload ส่วนกลาง
 
-// 🌊 DATABASE CONNECTION POOL
-// สร้างระบบ Connection Pool ในการบริหารท่อส่งข้อมูล เพื่อช่วยสลับและนำท่อเชื่อมต่อกลับมาใช้ใหม่
-// รองรับกรณีที่มีผู้ใช้งานเข้ามาทำแบบประเมินพร้อมๆ กันจำนวนมาก ไม่ให้ฐานข้อมูลล่ม
+// 🌊 DATABASE CONNECTION POOL: สร้างระบบจัดการการเชื่อมต่อเพื่อประสิทธิภาพในการสลับใช้งานท่อเชื่อมข้อมูล
 const pool = mysql.createPool({
-    connectionLimit: CONFIG.DB_POOL_LIMIT,
-    host: CONFIG.DB_HOST,
-    user: CONFIG.DB_USER,
-    password: CONFIG.DB_PASSWORD,
-    database: CONFIG.DB_NAME
+    connectionLimit: CONFIG.DB_POOL_LIMIT,          // นำค่าจำกัดจำนวน Pool สูงสุดจาก CONFIG มาตั้งค่า
+    host: CONFIG.DB_HOST,                           // นำที่อยู่โฮสต์จาก CONFIG มาตั้งค่า
+    user: CONFIG.DB_USER,                           // นำชื่อผู้ใช้จาก CONFIG มาตั้งค่า
+    password: CONFIG.DB_PASSWORD,                   // นำรหัสผ่านจาก CONFIG มาตั้งค่า
+    database: CONFIG.DB_NAME                        // นำชื่อฐานข้อมูลจาก CONFIG มาตั้งค่า
 });
 
-// ⏳ ASYNC DB QUERY ENGINE
-// แปลงคำสั่ง Query ของโมดูล mysql จากรูปแบบเดิมที่เป็น Callback Hell ให้เป็นรูปแบบ Promise
-// เพื่อให้เขียนโค้ดด้วย Async/Await ได้อย่างคลีน อ่านง่าย และจัดการข้อผิดพลาดด้วย Try-Catch ได้สมบูรณ์แบบ
+// ⏳ ASYNC DATABASE QUERY ENGINE: แปลงฟังก์ชันการทำงานของ MySQL จาก Callback ให้เป็น Promise
 const dbQuery = (sql, params) => {
     return new Promise((resolve, reject) => {
+        // เรียกใช้ฟังก์ชัน query ผ่านระบบ Pool
         pool.query(sql, params, (err, results) => {
-            if (err) return reject(err); // หาก SQL พังหรือหา Table ไม่เจอ ให้ส่ง Error ออกไปทันที
-            resolve(results);           // หากสำเร็จ ส่งผลลัพธ์ข้อมูลแถว (Rows) กลับออกไป
+            if (err) return reject(err);            // หากเกิดข้อผิดพลาด ให้ปฏิเสธคำขอและส่ง Error ออกไป
+            resolve(results);                       // หากทำงานสำเร็จ ให้ส่งผลลัพธ์ (Rows/Data) กลับคืนไป
         });
     });
 };
 
-/**
- * @description 🧠 CLINICAL RULE ENGINE FUNCTION
- * ฟังก์ชันหลักในการคำนวณคะแนนดิบ คัดกรองระดับความรุนแรง และจัดเส้นทางเดินหน้าจอ (Data Routing)
- * @param {string} code - รหัสแบบประเมิน ('2q', '9q', '8q')
- * @param {number} totalScore - คะแนนรวมดิบที่คำนวณได้จากหน้าบ้าน
- * @param {Array} answers - อาร์เรย์ของคะแนนที่ผู้ใช้เลือกตอบในแต่ละข้อ
- * @returns {Object} { result_text, recommended_action, next_action }
- */
+// =========================================================================
+// 🧠 CLINICAL RULE ENGINE FUNCTIONS (BUSINESS LOGIC)
+// =========================================================================
+
+// ฟังก์ชันสำหรับประเมินผลแบบสอบถามคัดกรองเบื้องต้น 2Q
+function evaluate2Q(answers) {
+    // ใช้ .some() ตรวจสอบว่าในอาร์เรย์คำตอบมีค่าคะแนนข้อใดมากกว่าเกณฑ์เสี่ยง (0) หรือไม่
+    const hasRisk = answers.some(score => Number(score) > SCORE_THRESHOLDS.FORM_2Q.HAS_RISK);
+    return {
+        result_text: hasRisk ? "พบความเสี่ยงภาวะซึมเศร้า" : "ปกติ", // ถ้าเสี่ยงให้แสดงข้อความเตือน
+        recommended_action: hasRisk ? "ควรเข้ารับการประเมินต่อด้วยแบบประเมินโรคซึมเศร้า 9Q" : "ดูแลสุขภาพใจตามปกติ ประเมินซ้ำเมื่อจำเป็น",
+        next_action: hasRisk ? "9q" : "home"       // ถ้าเสี่ยงบังคับไปทำแบบประเมิน 9Q ต่อ ถ้าปกติส่งกลับหน้าหลัก (Home)
+    };
+}
+
+// ฟังก์ชันสำหรับประเมินผลแบบประเมินโรคซึมเศร้ามาตรฐาน 9Q
+function evaluate9Q(totalScore) {
+    let resultText = "ปกติ";                        // กำหนดค่าเริ่มต้นข้อความผลลัพธ์
+    let recommendedAction = "ดูแลสุขภาพกายใจต่อเนื่อง นอนให้พอ ออกกำลังกาย และประเมินซ้ำเมื่อจำเป็น"; // กำหนดคำแนะนำเริ่มต้น
+    let nextAction = "history";                     // ปลายทางเริ่มต้นหากผลปกติ คือส่งไปหน้าแสดงประวัติรวม
+
+    // ตรวจสอบกรณีคะแนนอยู่ในช่วงเสี่ยงเล็กน้อย
+    if (totalScore >= SCORE_THRESHOLDS.FORM_9Q.NORMAL && totalScore <= SCORE_THRESHOLDS.FORM_9Q.MILD) {
+        resultText = "ซึมเศร้าเล็กน้อย";
+        recommendedAction = "ปรับพฤติกรรมการนอน-กิน พูดคุยกับคนใกล้ชิด และต้องประเมินแนวโน้มการฆ่าตัวตายต่อด้วย 8Q";
+        nextAction = "8q";                          // เปลี่ยนปลายทางเป็นแบบประเมินความเสี่ยงฆ่าตัวตาย 8Q
+    } 
+    // ตรวจสอบกรณีคะแนนอยู่ในช่วงเสี่ยงปานกลาง
+    else if (totalScore <= SCORE_THRESHOLDS.FORM_9Q.MODERATE) {
+        resultText = "ซึมเศร้าปานกลาง";
+        recommendedAction = "ควรปรึกษาแพทย์/นักจิตวิทยา และจำเป็นต้องประเมินแนวโน้มการฆ่าตัวตายต่อด้วย 8Q";
+        nextAction = "8q";                          // เปลี่ยนปลายทางเพื่อส่งไปทำแบบประเมิน 8Q
+    } 
+    // ตรวจสอบกรณีคะแนนสูงกว่าเกณฑ์ปานกลาง (เข้าขั้นรุนแรง)
+    else if (totalScore > SCORE_THRESHOLDS.FORM_9Q.MODERATE) {
+        resultText = "ซึมเศร้ารุนแรง";
+        recommendedAction = "ควรพบแพทย์โดยเร็วที่สุด และจำเป็นต้องประเมินแนวโน้มการฆ่าตัวตายต่อด้วย 8Q ทันที";
+        nextAction = "8q";                          // สภาวะวิกฤต บังคับไปทำฟอร์ม 8Q ทันที
+    }
+
+    // ส่งวัตถุผลลัพธ์การคัดกรองกลับไปใช้งาน
+    return { result_text: resultText, recommended_action: recommendedAction, next_action: nextAction };
+}
+
+// ฟังก์ชันสำหรับประเมินผลแบบสอบถามเฝ้าระวังพฤติกรรมทำร้ายตนเอง 8Q
+function evaluate8Q(totalScore) {
+    let resultText = "ไม่มีความเสี่ยงทำร้ายตนเอง";    // กำหนดค่าเริ่มต้นข้อความผลลัพธ์
+    let recommendedAction = "ติดตามดูแลอย่างต่อเนื่อง ประเมินซ้ำเมื่อสภาวะจิตใจเปลี่ยน"; // กำหนดคำแนะนำเริ่มต้น
+
+    // ตรวจสอบคะแนนกรณีมีความเสี่ยงน้อย
+    if (totalScore > SCORE_THRESHOLDS.FORM_8Q.NONE && totalScore <= SCORE_THRESHOLDS.FORM_8Q.MILD) {
+        resultText = "ระดับความเสี่ยงทำร้ายตนเอง: น้อย";
+        recommendedAction = "ควรให้การปรึกษาผ่อนคลายความเครียด ติดตามดูแลใกล้ชิด";
+    } 
+    // ตรวจสอบคะแนนกรณีมีความเสี่ยงปานกลาง
+    else if (totalScore <= SCORE_THRESHOLDS.FORM_8Q.MODERATE) {
+        resultText = "ระดับความเสี่ยงทำร้ายตนเอง: ปานกลาง";
+        recommendedAction = "ควรส่งพบแพทย์ นักจิตวิทยา หรือโทรสายด่วนสุขภาพจิต 1323 เพื่อวางแผนช่วยเหลือ";
+    } 
+    // ตรวจสอบคะแนนกรณีมีความเสี่ยงรุนแรงมาก
+    else if (totalScore > SCORE_THRESHOLDS.FORM_8Q.MODERATE) {
+        resultText = "ระดับความเสี่ยงทำร้ายตนเอง: รุนแรงมาก";
+        recommendedAction = "⚠️ ต้องส่งต่อโรงพยาบาลที่มีจิตแพทย์ด่วนทันที หรือติดต่อสายด่วน 1669 ห้ามปล่อยให้อยู่คนเดียว";
+    }
+
+    // ส่งผลลัพธ์กลับ โดยล็อกปลายทางหน้าจอสุดท้ายไว้ที่หน้าประวัติรวม (history) เสมอ
+    return { result_text: resultText, recommended_action: recommendedAction, next_action: "history" };
+}
+
+// ฟังก์ชันหลัก (Facade/Router) ในการเลือกเรียกใช้ฟังก์ชันย่อยตามรหัสแบบประเมินที่ส่งเข้ามา
 function evaluateAssessment(code, totalScore, answers) {
-    // 🟢 ตรรกะประเมินฟอร์มคัดกรองเบื้องต้น 2Q
-    if (code === '2q') {
-        // ใช้คำสั่ง .some() ตรวจดูว่าในอาเรย์คำตอบ มีข้อไหนที่ผู้ใช้ตอบว่า "มี" (> 0) หรือไม่
-        const hasRisk = answers.some(score => Number(score) > SCORE_THRESHOLDS.FORM_2Q_HAS_RISK);
-        return {
-            result_text: hasRisk ? "พบความเสี่ยงภาวะซึมเศร้า" : "ปกติ",
-            recommended_action: hasRisk ? "ควรเข้ารับการประเมินต่อด้วยแบบประเมินโรคซึมเศr้า 9Q" : "ดูแลสุขภาพใจตามปกติ ประเมินซ้ำเมื่อจำเป็น",
-            next_action: hasRisk ? "9q" : "home" // หากเสี่ยงส่งไป 9Q ต่อ ถ้าปกติให้ดีดกลับหน้าหลัก (Home)
-        };
+    switch (code) {
+        case '2q': return evaluate2Q(answers);       // ถ้ารหัสเป็น 2q ให้วิ่งไปฟังก์ชันคำนวณของ 2Q
+        case '9q': return evaluate9Q(totalScore);    // ถ้ารหัสเป็น 9q ให้วิ่งไปฟังก์ชันคำนวณของ 9Q
+        case '8q': return evaluate8Q(totalScore);    // ถ้ารหัสเป็น 8q ให้วิ่งไปฟังก์ชันคำนวณของ 8Q
+        default: return { result_text: "ทำแบบประเมินสำเร็จ", recommended_action: "-", next_action: "history" };
     }
-    
-    // 🟣 ตรรกะประเมินฟอร์มโรคซึมเศร้ามาตรฐาน 9Q
-    if (code === '9q') {
-        let resultText = "";
-        let recommendedAction = "";
-        let nextAction = "history"; // ค่าเริ่มต้นหากไม่เสี่ยงมาก ให้ส่งไปหน้าประวัติรวม
-        
-        if (totalScore < SCORE_THRESHOLDS.FORM_9Q_NORMAL) {
-            resultText = "ปกติ";
-            recommendedAction = "ดูแลสุขภาพกายใจต่อเนื่อง นอนให้พอ ออกกำลังกาย และประเมินซ้ำเมื่อจำเป็น";
-        } else if (totalScore <= SCORE_THRESHOLDS.FORM_9Q_MILD) {
-            resultText = "ซึมเศร้าเล็กน้อย";
-            recommendedAction = "ปรับพฤติกรรมการนอน-กิน พูดคุยกับคนใกล้ชิด และต้องประเมินแนวโน้มการฆ่าตัวตายต่อด้วย 8Q";
-            nextAction = "8q"; // 🔄 สั่งเปลี่ยน State บังคับให้หน้าบ้านพาผู้ใช้ไปทำฟอร์ม 8Q ต่อทันที
-        } else if (totalScore <= SCORE_THRESHOLDS.FORM_9Q_MODERATE) {
-            resultText = "ซึมเศร้าปานกลาง";
-            recommendedAction = "ควรปรึกษาแพทย์/นักจิตวิทยา และจำเป็นต้องประเมินแนวโน้มการฆ่าตัวตายต่อด้วย 8Q";
-            nextAction = "8q"; // บังคับดีดไปทำแบบประเมินความเสี่ยงต่อด้วย 8Q
-        } else {
-            resultText = "ซึมเศร้ารุนแรง";
-            recommendedAction = "ควรพบแพทย์โดยเร็วที่สุด และจำเป็นต้องประเมินแนวโน้มการฆ่าตัวตายต่อด้วย 8Q ทันที";
-            nextAction = "8q"; // สภาวะวิกฤต บังคับเข้าสู่กระบวนการคัดกรองพฤติกรรมทำร้ายตนเองด่วนที่สุด
-        }
-        
-        return { result_text: resultText, recommended_action: recommendedAction, next_action: nextAction };
-    }
-    
-    // 🔴 ตรรกะประเมินฟอร์มเฝ้าระวังความเสี่ยงและพฤติกรรมทำร้ายตนเอง 8Q
-    if (code === '8q') {
-        let resultText = "";
-        let recommendedAction = "";
-        
-        if (totalScore === SCORE_THRESHOLDS.FORM_8Q_NONE) {
-            resultText = "ไม่มีความเสี่ยงทำร้ายตนเอง";
-            recommendedAction = "ติดตามดูแลอย่างต่อเนื่อง ประเมินซ้ำเมื่อสภาวะจิตใจเปลี่ยน";
-        } else if (totalScore <= SCORE_THRESHOLDS.FORM_8Q_MILD) {
-            resultText = "ระดับความเสี่ยงทำร้ายตนเอง: น้อย";
-            recommendedAction = "ควรให้การปรึกษาผ่อนคลายความเครียด ติดตามดูแลใกล้ชิด";
-        } else if (totalScore <= SCORE_THRESHOLDS.FORM_8Q_MODERATE) {
-            resultText = "ระดับความเสี่ยงทำร้ายตนเอง: ปานกลาง";
-            recommendedAction = "ควรส่งพบแพทย์ นักจิตวิทยา หรือโทรสายด่วนสุขภาพจิต 1323 เพื่อวางแผนช่วยเหลือ";
-        } else {
-            resultText = "ระดับความเสี่ยงทำร้ายตนเอง: รุนแรงมาก";
-            recommendedAction = "⚠️ ต้องส่งต่อโรงพยาบาลที่มีจิตแพทย์ด่วนทันที หรือติดต่อสายด่วน 1669 ห้ามปล่อยให้อยู่คนเดียว";
-        }
-        
-        // จุดสิ้นสุดลูปการคัดกรอง ล็อกเป้าหมายปลายทางสุดท้ายให้พาผู้ใช้กลับไปที่หน้าแสดงประวัติรวม (History)
-        return { result_text: resultText, recommended_action: recommendedAction, next_action: "history" };
-    }
-    
-    return { result_text: "ทำแบบประเมินสำเร็จ", recommended_action: "-", next_action: "history" };
 }
 
 // =========================================================================
-// ⚡ RESTful API ENDPOINTS (AUTHENTICATION & ASSESSMENT SYSTEM)
+// ⚡ RESTful API ENDPOINTS (AUTHENTICATION SYSTEM)
 // =========================================================================
 
-/**
- * @route   POST /api/login
- * @desc    ตรวจสอบความถูกต้องของบัญชีและเข้าสู่ระบบด้วย Email + Password
- */
+// API เส้นทางสำหรับตรวจเช็กสิทธิ์และเข้าสู่ระบบ (Login)
 app.post("/api/login", async (req, res) => {
     try {
-        const { email, password } = req.body;
-        const hashedPassword = md5(password); // แฮชรหัสผ่านในรูปแบบ MD5 เพื่อเปรียบเทียบกับใน Database
-        const sql = "SELECT * FROM users WHERE email = ? AND password_hash = ?";
+        const { email, password } = req.body;       // สกัดอีเมลและรหัสผ่านจากข้อมูลที่หน้าบ้านส่งมา
+        const sql = "SELECT * FROM users WHERE email = ?"; // เตรียมคำสั่ง SQL ค้นหายูสเซอร์จากอีเมล
+        const results = await dbQuery(sql, [email]); // รันคำสั่งคิวรีข้อมูลในระบบฐานข้อมูล
         
-        const results = await dbQuery(sql, [email, hashedPassword]);
-        
+        // หากไม่พบข้อมูลอีเมลในระบบ
         if (results.length === 0) {
-            return res.json({ result: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
+            return res.status(401).json({ result: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
         }
 
-        const user = results[0];
+        const user = results[0];                     // ดึงข้อมูลแถวแรกสุดของผู้ใช้งานออกมา
+        // 🛡️ ตรวจเช็กความถูกต้อง: เปรียบเทียบรหัสผ่านที่ส่งมากับค่าแฮชในเบสผ่านโมดูล Bcrypt
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        
+        // ถ้ารหัสผ่านไม่ตรงกัน
+        if (!isMatch) {
+            return res.status(401).json({ result: false, message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" });
+        }
+
+        // หากผ่านเงื่อนไขทั้งหมด ให้ส่งข้อมูลสำคัญกลับไปให้หน้าบ้านจัดเก็บลง Session/Context
         res.json({
             result: true,
             data: {
@@ -179,59 +186,50 @@ app.post("/api/login", async (req, res) => {
             }
         });
     } catch (err) {
-        res.status(500).json({ result: false, message: "ระบบฐานข้อมูลหลังบ้านขัดข้อง: " + err.message });
+        // จัดการกรณีระบบล่มภายใน ให้ส่งรหัส 500 กลับไป
+        res.status(500).json({ result: false, message: "ระบบฐานข้อมูลขัดข้อง: " + err.message });
     }
 });
 
-/**
- * @route   POST /api/signup
- * @desc    ลงทะเบียนบัญชีผู้ใช้งานคนไข้รายใหม่
- */
+// API เส้นทางสำหรับสมัครบัญชีคนไข้รายใหม่ (Signup)
 app.post("/api/signup", async (req, res) => {
     try {
-        const { username, first_name, last_name, email, password } = req.body;
+        const { username, first_name, last_name, email, password } = req.body; // รับตัวแปรทั้งหมดจากโครงสร้างข้อมูล
       
+        // ตรวจสอบความสมบูรณ์ของ Payload ว่ากรอกข้อมูลครบทุกช่องหรือไม่
         if (!username || !first_name || !last_name || !email || !password) {
-            return res.json({ result: false, message: "กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง" });
+            return res.status(400).json({ result: false, message: "กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง" });
         }
       
-        // ตรวจสอบความซ้ำซ้อนของข้อมูลบัญชีผู้ใช้งาน
-        const checkSql = "SELECT id FROM users WHERE email = ? OR username = ?";
-        const checkResults = await dbQuery(checkSql, [email, username]);
-        
+        // ทำการคิวรีเพื่อเช็กว่ามีคนใช้ชื่อบัญชีหรืออีเมลนี้สมัครไปก่อนหน้านี้แล้วหรือยัง
+        const checkResults = await dbQuery("SELECT id FROM users WHERE email = ? OR username = ?", [email, username]);
         if (checkResults.length > 0) {
-            return res.json({ result: false, message: "อีเมลหรือชื่อผู้ใช้งานนี้ถูกใช้ในระบบแล้ว" });
+            return res.status(400).json({ result: false, message: "อีเมลหรือชื่อผู้ใช้งานนี้ถูกใช้ในระบบแล้ว" });
         }
       
-        const hashedPassword = md5(password);
+        // 🛡️ เข้ารหัสลับ: แฮชรหัสผ่านของผู้ใช้ผ่านฟังก์ชัน bcrypt.hash ก่อนจัดเก็บลงตาราง
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
         const insertSql = `
             INSERT INTO users (username, password_hash, first_name, last_name, email, role_id, role_name) 
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
         
-        await dbQuery(insertSql, [
-            username, 
-            hashedPassword, 
-            first_name, 
-            last_name, 
-            email, 
-            CONFIG.DEFAULT_ROLE_ID, 
-            CONFIG.DEFAULT_ROLE_NAME
-        ]);
-            
-        res.json({ result: true, message: "สมัครสมาชิกสำเร็จเรียบร้อยแล้ว!" });
+        // รันคำสั่งบันทึกข้อมูลสมาชิกใหม่ โดยผูกบทบาทตั้งต้นเป็นระดับคนไข้ทั่วไป (User)
+        await dbQuery(insertSql, [username, hashedPassword, first_name, last_name, email, CONFIG.ROLES.USER_ID, CONFIG.ROLES.USER_NAME]);
+        res.status(201).json({ result: true, message: "สมัครสมาชิกสำเร็จเรียบร้อยแล้ว!" });
     } catch (err) {
-        res.status(500).json({ result: false, message: "เกิดข้อผิดพลาดในการลงทะเบียนฐานข้อมูล: " + err.message });
+        res.status(500).json({ result: false, message: "เกิดข้อผิดพลาดในการลงทะเบียน: " + err.message });
     }
 });
 
-/**
- * @route   GET /api/assessment/form/:code
- * @desc    ดึงชุดคำถามและตัวเลือกคะแนน (Choices) ตามรหัสแบบประเมินเพื่อไปเรนเดอร์ในหน้าจอทำข้อสอบ
- */
+// =========================================================================
+// 📝 CLINICAL ASSESSMENT ENGINE ENDPOINTS
+// =========================================================================
+
+// API เส้นทางสำหรับดึงรายการโจทย์คำถามและตัวเลือกคะแนนขึ้นไปแสดงบนหน้าจอทำฟอร์ม
 app.get("/api/assessment/form/:code", async (req, res) => {
     try {
-        const code = req.params.code;
+        const code = req.params.code;               // ดึงตัวแปรรหัสแบบประเมินจาก URL Params
         const sql = `
             SELECT q.id, q.question_number, q.question_text 
             FROM assessment_questions q
@@ -239,10 +237,9 @@ app.get("/api/assessment/form/:code", async (req, res) => {
             WHERE a.code = ?
             ORDER BY q.question_number ASC
         `;
+        const questions = await dbQuery(sql, [code]); // รันคำสั่งดึงรายละเอียดของคำถามที่ผูกกับรหัสนั้น ๆ
         
-        const questions = await dbQuery(sql, [code]);
-        
-        // Static Mapping ตัวเลือกคำตอบและเกณฑ์คะแนนตามรูปแบบสากลของแต่ละฟอร์ม
+        // ตารางจัดเก็บตัวเลือกคำตอบทางสถิติ (Static Choices Mapping) ตามโครงสร้างสากล
         const choicesMap = {
             '2q': [{ choice_text: "ไม่มี", score: 0 }, { choice_text: "มี", score: 1 }],
             '8q': [{ choice_text: "ไม่มี", score: 0 }, { choice_text: "มี", score: 1 }],
@@ -253,50 +250,48 @@ app.get("/api/assessment/form/:code", async (req, res) => {
                 { choice_text: "เป็นทุกวัน", score: 3 }
             ]
         };
-        
+        // เลือกชิ้นข้อมูล Choices หากไม่พบในแมปให้ดึงชุดค่าของ default ฟอร์ม 9Q มาใช้งานแทน
         const choices = choicesMap[code] || choicesMap['default'];
                   
-        res.json({ result: true, data: { questions, choices } });
+        res.json({ result: true, data: { questions, choices } }); // ส่งโครงสร้างคำถามพร้อมตัวเลือกกลับไปให้หน้าบ้าน
     } catch (err) {
         res.status(500).json({ result: false, message: "ดึงข้อมูลโครงสร้างคำถามล้มเหลว: " + err.message });
     }
 });
 
-/**
- * @route   POST /api/assessment/save
- * @desc    บันทึกผลการคัดกรองลงฐานข้อมูล (การันตีลอจิก INSERT INTO แตกแถวข้อมูลใหม่ทุกครั้ง ไม่ลบทับอันเก่า)
- */
+// API เส้นทางสำหรับรับบันทึกผลการคัดกรอง และประเมินทิศทางหน้าถัดไปแบบไดนามิก
 app.post("/api/assessment/save", async (req, res) => {
     try {
-        const { user_id, assessment_code, answers } = req.body; 
+        const { user_id, assessment_code, answers } = req.body; // แตกตัวแปร Payload ออกมาจาก Request Body
 
+        // เช็กความครบถ้วนของข้อมูลก่อนประมวลผลต่อ
         if (!user_id || !assessment_code || !answers) {
-            return res.json({ result: false, message: "ข้อมูล Payload ไม่ครบถ้วน" });
+            return res.status(400).json({ result: false, message: "ข้อมูล Payload ไม่ครบถ้วน" });
         }
 
-        // ค้นหา ID แท้จริงของตัวแบบประเมินจากตารางหลักเพื่อเอาไปทำ Foreign Key
+        // ค้นหาข้อมูล ID แท้จริงของแบบประเมินประเภทนั้น ๆ เพื่อนำไปเชื่อมคีย์นอก (Foreign Key)
         const searchRes = await dbQuery("SELECT id FROM assessments WHERE code = ?", [assessment_code]);
-        if (searchRes.length === 0) return res.json({ result: false, message: "ไม่พบประเภทแบบประเมินนี้" });
+        if (searchRes.length === 0) return res.status(404).json({ result: false, message: "ไม่พบประเภทแบบประเมินนี้" });
         
-        const assessmentId = searchRes[0].id;
-        // รวมคะแนนดิบสะสมจากอาร์เรย์คำตอบรายข้อที่หน้าบ้านยิงเข้ามา
+        const assessmentId = searchRes[0].id;        // สกัดได้รหัส primary key ของแบบประเมิน
+        // คำนวณหาคะแนนรวมดิบจากอาร์เรย์คะแนนรายข้อสะสมที่ส่งมาจากผู้ใช้
         const total_score = answers.reduce((sum, score) => sum + Number(score), 0);
-        // ประมวลผลเกณฑ์ระดับความเสี่ยงและคำแนะนำทางการแพทย์ผ่าน Rule Engine
+        // เรียกสมองกลคำนวณทางคลินิก (Rule Engine) เพื่อหารูปประโยคคำวินิจฉัยและเส้นทางถัดไป
         const evaluation = evaluateAssessment(assessment_code, total_score, answers);
         
-        // บันทึกผลลัพธ์การคัดกรองหลักลงตารางแม่ (assessment_results) ด้วยคำสั่ง INSERT (สร้างแถวใหม่เสมอ)
+        // สั่งบันทึกข้อมูลสรุปลงตารางแม่ (assessment_results) ด้วยลอจิก INSERT INTO (ไม่เขียนทับแถวเดิมเด็ดขาด)
         const sqlInsertResult = "INSERT INTO assessment_results (user_id, assessment_id, total_score, result_text, recommended_action) VALUES (?, ?, ?, ?, ?)";
         const resultObj = await dbQuery(sqlInsertResult, [user_id, assessmentId, total_score, evaluation.result_text, evaluation.recommended_action]);
         
-        // ดึง Primary Key (insertId) ล่าสุดที่เพิ่งเจนเนอเรตจากตารางแม่ไปเป็นรหัสโยงในตารางลูก
-        const resultId = resultObj.insertId;
-        // จัดแมปเตรียมก้อนข้อมูลคำตอบแบบ Bulk Payload เพื่อประหยัดช่องสัญญาณการยิง SQL
+        const resultId = resultObj.insertId;         // ดึงตัวเลขรหัส ID แถวล่าสุดที่เพิ่งงอกในตารางแม่มาถือไว้
+        // แปลงมิติอาร์เรย์ของคำตอบให้อยู่ในรูปแบบ Bulk Layout `[[result_id, q_num, score], ...]`
         const values = answers.map((score, index) => [resultId, index + 1, score]);
-        // บันทึกคำตอบรายข้อลงตารางลูก (assessment_answers) เพื่อเก็บบันทึกประวัติย้อนหลังอย่างละเอียด
+        // สั่งประหยัดสัญญาณช่องสื่อสารโดยการทำ Bulk Insert บันทึกคำตอบรายข้อทั้งหมดลงตารางลูก (assessment_answers) ในทีเดียว
         const sqlInsertAnswers = "INSERT INTO assessment_answers (result_id, question_number, score) VALUES ?";
         
-        await dbQuery(sqlInsertAnswers, [values]);
+        await dbQuery(sqlInsertAnswers, [values]);   // รันคำสั่งบันทึกข้อมูลตารางลูก
             
+        // ส่งแพ็กเกจข้อมูลลอจิกสะท้อนกลับไปหน้าบ้าน เพื่อให้หน้าบ้านใช้เปลี่ยน State หน้าจอแบบเรียลไทม์
         res.json({
             result: true,
             message: "บันทึกข้อมูลสำเร็จ",
@@ -304,24 +299,19 @@ app.post("/api/assessment/save", async (req, res) => {
                 total_score,
                 result_text: evaluation.result_text,
                 recommended_action: evaluation.recommended_action,
-                next_action: evaluation.next_action  // หน้าบ้านจะแกะตัวแปรนี้ไปทำ Conditional Router นำทางไปแบบสอบถามถัดไป
+                next_action: evaluation.next_action  // 🎯 ตัวแปรนำทาง เช่น '9q', '8q' หรือ 'history'
             }
         });
     } catch (err) {
-        res.status(500).json({ result: false, message: "ล้มเหลวในกระบวนการบันทึกข้อมูลแบบประเมิน: " + err.message });
+        res.status(500).json({ result: false, message: "ล้มเหลวในกระบวนการบันทึกข้อมูล: " + err.message });
     }
 });
 
-/**
- * @route   GET /api/phq9/history/:user_id
- * @desc    🎯 DATA RELATIONSHIP ENGINE: ดึงผลลัพธ์ประวัติจากตารางแม่ พร้อม Query เชื่อมโยงคำตอบรายข้อจากตารางลูก
- * ช่วยแก้ปัญหาข้อมูลคำตอบรายข้อข้างในว่างเปล่าได้อย่างเบ็ดเสร็จ
- */
+// API เส้นทางสำหรับดึงประวัติการทำฟอร์มทั้งหมดของรายบุคคล โดยดึงโครงสร้างตารางแม่ประกบตารางลูกพร้อมกัน
 app.get("/api/phq9/history/:user_id", async (req, res) => {
     try {
-        const userId = req.params.user_id;
-        
-        // ขั้นตอนที่ 1: สั่ง Query ผลการคัดกรองทั้งหมดของยูสเซอร์คนดังกล่าวจากตารางแม่ (assessment_results)
+        const userId = req.params.user_id;           // แกะค่ารหัสประจำตัวคนไข้จาก URL Parameter
+        // ดึงรายการผลสรุปหลักทั้งหมดที่เกี่ยวข้องกับคนไข้รายนี้ เรียงลำดับจากเวลาล่าสุดถอยหลังไปอดีต
         const sqlResults = `
             SELECT r.id, a.code, a.title as assessment_title, r.total_score, r.result_text, r.recommended_action, r.created_at 
             FROM assessment_results r
@@ -331,38 +321,34 @@ app.get("/api/phq9/history/:user_id", async (req, res) => {
         `;
         const results = await dbQuery(sqlResults, [userId]);
         
-        // ขั้นตอนที่ 2: ใช้ Promise.all ควบคู่กับลูปดึงคะแนนคำตอบรายข้อจากตารางลูก (assessment_answers) มาผูกติดไปด้วย
+        // 🔄 ใช้ Promise.all รันลูปดึงข้อมูลข้อคำตอบย่อยจากตารางลูกแบบอะซิงโครนัสขนานกันไปเพื่อเพิ่มความเร็ว
         const mappedResults = await Promise.all(results.map(async (item) => {
+            // คิวรีดึงชุดคะแนนเรียงลำดับตามข้อคำถามจากตารางลูก
             const sqlAnswers = `
                 SELECT score FROM assessment_answers 
                 WHERE result_id = ? 
                 ORDER BY question_number ASC
             `;
             const answersRows = await dbQuery(sqlAnswers, [item.id]);
-            // สกัด Rows ในรูปของอาเรย์ตัวเลขคะแนนล้วน เช่น [0, 1, 3, 2] ให้หน้าบ้านดึงไปแสดงแยกช่องได้ง่าย
-            const answersArray = answersRows.map(row => row.score);
-
+            // ผูกมัดแพ็กข้อมูลใหม่โดยนำระเบียนตารางลูกแปลงเป็นอาเรย์ตัวเลข [0, 2, 1] ผนึกเข้ากับโมเดลหลักตารางแม่
             return {
                 id: item.id,
-                assessment_code: item.code, // ป้ายระบุโค้ดแบบประเมินสำหรับให้หน้าบ้านใช้จัดเส้นทาง '2q', '9q', '8q'
+                assessment_code: item.code,
                 total_score: item.total_score,
                 result_text: item.result_text,
                 recommended_action: item.recommended_action,
                 created_at: item.created_at,
-                answers: answersArray // 🎯 จุดสำคัญ: แนบชุดคะแนนคำตอบรายข้อส่งกลับออกไปเพื่อนำไปกางในแผงรายละเอียดของหน้าจอประวัติ
+                answers: answersRows.map(row => row.score) // 🎯 ผนึกคำตอบเรียงข้อแนบส่งกลับไปด้วยเสร็จสรรพ
             };
         }));
 
-        res.json({ result: true, data: mappedResults });
+        res.json({ result: true, data: mappedResults }); // ส่งก้อนประวัติความสัมพันธ์ตารางแม่-ลูกที่สมบูรณ์กลับไป
     } catch (err) {
         res.status(500).json({ result: false, message: "ดึงประวัติล้มเหลว: " + err.message });
     }
 });
 
-/**
- * @route   GET /api/phq9/all
- * @desc    ดึงประวัติผลประเมินรวมของคนไข้ทุกคนในระบบ (สำหรับใช้ในระบบหลังบ้านหรือระบบแดชบอร์ดแอดมิน)
- */
+// API เส้นทางสำหรับดึงประวัติภาพรวมของคนไข้ทุกคนในระบบ (สำหรับทำแผงควบคุมหลักหรือระบบแอดมิน)
 app.get("/api/phq9/all", async (req, res) => {
     try {
         const sql = `
@@ -371,17 +357,16 @@ app.get("/api/phq9/all", async (req, res) => {
             JOIN assessments a ON r.assessment_id = a.id
             ORDER BY r.created_at DESC
         `;
-        const results = await dbQuery(sql);
+        const results = await dbQuery(sql);          // ดึงประวัติรวมทั้งหมดแบบไม่คัดกรอง ID รายบุคคล
         res.json({ result: true, data: results });
-    } catch (err) {
-        res.status(500).json({ result: false, message: err.message });
-    }
+    } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
 // =========================================================================
-// 🛠️ ADMIN SYSTEM OPERATIONS (MySQL CRUD OPERATIONS FOR BACKOFFICE APP)
+// 🛠️ ADMIN ROUTERS & CORE CRUD OPERATIONS (ระบบหลังบ้านส่วนของแอดมิน)
 // =========================================================================
 
+// ดึงรายการประเภทแบบประเมินทั้งหมดในระบบขึ้นมาตรวจดู
 app.get("/api/admin/assessments", async (req, res) => {
     try {
         const data = await dbQuery("SELECT * FROM assessments ORDER BY id ASC");
@@ -389,14 +374,17 @@ app.get("/api/admin/assessments", async (req, res) => {
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
+// สั่งเพิ่มรูปแบบประเภทแบบประเมินใหม่เข้าไปในระบบ
 app.post("/api/admin/assessments", async (req, res) => {
     try {
         const { code, title, description } = req.body;
+        // ปรับแต่งข้อความ สกัดช่องว่างส่วนเกินออก ก่อนทำการบันทึก
         await dbQuery("INSERT INTO assessments (code, title, description) VALUES (?, ?, ?)", [code.toLowerCase().trim(), title.trim(), description.trim()]);
         res.json({ result: true, message: "เพิ่มแบบประเมินสำเร็จ" });
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
+// ลบประเภทฟอร์มแบบประเมินที่ไม่ใช้งานออกตาม ID
 app.delete("/api/admin/assessments/:id", async (req, res) => {
     try {
         await dbQuery("DELETE FROM assessments WHERE id = ?", [req.params.id]);
@@ -404,6 +392,7 @@ app.delete("/api/admin/assessments/:id", async (req, res) => {
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
+// ดึงโจทย์คำถามทั้งหมดที่อยู่ภายใต้ฟอร์มไอดีที่กำหนดออกมาตรวจดู
 app.get("/api/admin/questions/:assessment_id", async (req, res) => {
     try {
         const data = await dbQuery("SELECT * FROM assessment_questions WHERE assessment_id = ? ORDER BY question_number ASC", [req.params.assessment_id]);
@@ -411,6 +400,7 @@ app.get("/api/admin/questions/:assessment_id", async (req, res) => {
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
+// สั่งสร้างหัวข้อโจทย์คำถามข้อใหม่ผูกเข้ากับฟอร์มนั้น ๆ
 app.post("/api/admin/questions", async (req, res) => {
     try {
         const { assessment_id, question_number, question_text } = req.body;
@@ -419,6 +409,7 @@ app.post("/api/admin/questions", async (req, res) => {
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
+// ปรับปรุงแก้ไขข้อความรูปประโยคของตัวโจทย์คำถามตามเลขไอดีข้อ
 app.put("/api/admin/questions/:id", async (req, res) => {
     try {
         const { question_text } = req.body;
@@ -427,6 +418,7 @@ app.put("/api/admin/questions/:id", async (req, res) => {
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
+// สั่งลบหัวข้อคำถามข้อนั้น ๆ ออกจากสารบบฐานข้อมูล
 app.delete("/api/admin/questions/:id", async (req, res) => {
     try {
         await dbQuery("DELETE FROM assessment_questions WHERE id = ?", [req.params.id]);
@@ -434,7 +426,10 @@ app.delete("/api/admin/questions/:id", async (req, res) => {
     } catch (err) { res.status(500).json({ result: false, message: err.message }); }
 });
 
-// เริ่มต้นรันเซิร์ฟเวอร์ Express ตามพอร์ตที่กำหนดใน Config
+// =========================================================================
+// 🚀 START SERVER LISTEN
+// =========================================================================
+// สั่งให้ระบบเซิร์ฟเวอร์ Express เริ่มต้นสแตนด์บายรอรับ HTTP Request ตามพอร์ตที่สกัดไว้จาก Config
 app.listen(CONFIG.PORT, () => {
-    console.log(`Dynamic Assessment backend listening at http://localhost:${CONFIG.PORT}`);
+    console.log(`Secured Dynamic Assessment backend listening at http://localhost:${CONFIG.PORT}`);
 });
