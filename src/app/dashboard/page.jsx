@@ -1,64 +1,88 @@
-"use client"; // บ่งชี้โครงสร้าง Client Module หน้าบ้านสำหรับควบคุมคอนโทรลเลอร์ UI และการจัดการ Event
-import React from 'react'; // นำเข้าโมดูลหลักของไลบรารี React
-import { useAuthen } from '@/utils/useAuthen'; // นำเข้าชุดคำสั่ง Custom Hook สำหรับดักฟังสถานะและพิสูจน์สิทธิ์เข้าใช้งานระบบ
-import { useRouter } from 'next/navigation'; // นำเข้าเครื่องมือชุดคำสั่งช่วยนำทางเปลี่ยนพาร์ทหน้าเพจของ Next.js
+"use client"; // บ่งชี้โครงสร้าง Client Module หน้าบ้านสำหรับควบคุมคอนโทรลเลอร์ UI 
 
-/**
- * @description หน้าเพจตรวจสอบระบบบัญชีและประมวลผลการจำแนกสถานะผู้เข้าใช้งานส่วนบุคคล
- * @principles KISS - ตัดลอจิกซับซ้อนให้เดินเป็นเส้นตรง | DRY - ใช้ระบบความลาดชันฟอนต์และโทนสีพาสเทลรับเข้าชุดธีมหลัก
- */
+import React, { useEffect } from 'react'; 
+import { useAuthen } from '@/utils/useAuthen'; 
+import { useRouter } from 'next/navigation'; 
+
 export default function Dashboard() {
-  const router = useRouter(); // ประกาศใช้งานระบบนำทางและสั่งโหลดเปลี่ยนหน้าเพจ Next.js
-  const { isLoading, authenticated } = useAuthen(); // แตก State ตรวจสอบความพร้อมของเซสชันและข้อมูลล็อกอินบัญชีผู้ใช้
+  const router = useRouter(); 
+  // 🎯 REFACTOR TIP: หาก useAuthen มีฟังก์ชันล้างสเตท เช่น logout หรือ คีย์ฟังก์ชันควบคุมเซสชัน ให้ดึงมาใช้ร่วมกัน
+  const { isLoading, authenticated, logout } = useAuthen(); 
 
-  // 🚨 Robust Error Handling / Guard Clause: ดักสัญญานระหว่างระบบกำลังโหลดข้อมูลบัญชีค้างอยู่
+  // มาตรการรักษาความปลอดภัย (Security Gateway): ตรวจเช็กเซสชันรัดกุม
+  useEffect(() => {
+    if (!isLoading && !authenticated) {
+      router.replace('/login'); 
+    }
+  }, [isLoading, authenticated, router]);
+
   if (isLoading) {  
-    // คืนค่าโครงสร้างม่านป้ายสปินเนอร์คำว่า Loading ดักหน้าจอไว้เพื่อไม่ให้เกิดการกระตุกหลุดสายตาของผู้ใช้งาน
-    return <div className='flex flex-col justify-center items-center w-full text-center min-h-screen bg-[#D0F8FF] font-sans antialiased text-[#432C81]'>Loading...</div>;
+    return (
+      <div className='flex flex-col justify-center items-center w-full text-center min-h-screen bg-[#D0F8FF] font-sans antialiased text-[#432C81]'>
+        <div className="animate-pulse font-semibold">กำลังตรวจสอบข้อมูลบัญชี...</div>
+      </div>
+    );
   }
 
-  // มาตรการรักษาความปลอดภัย (Security Gateway): หากดักจับลอจิกแล้วพบว่าไม่มี Session ล็อกอินหลงเหลืออยู่จริง
-  if (!authenticated) {
-    router.replace('/login'); // สั่งเบรกและเตะนำทางผู้บุกรุกกลับไปตั้งหลักที่หน้าล็อกอินทันทีเพื่อความปลอดภัยของฐานข้อมูล
-    return null; // ระงับการวาดโครงสร้างภาพองค์ประกอบ UI ลงหน้าจอหน้าต่างทันทีป้องกันช่องโหว่ข้อมูลรั่วไหล
-  }
+  if (!authenticated) return null; 
 
-  // ฟังก์ชันควบคุมมาตรการออกจากระบบ ล้างสิทธิ์การถือครอง Token
   const handleUserLogout = () => {
-    localStorage.removeItem('user'); // สั่งทำลายคราบลบก้อนเซสชันโปรไฟล์ที่เก็บสะสมค้างไว้ในหน่วยความจำเครื่องออกให้หมดเกลี้ยง
-    router.push('/login'); // สั่งการเปลี่ยนเเด้งพาร์ทเส้นทางพายูสเซอร์กลับไปหน้าเพจเข้าสู่ระบบเริ่มต้น
+    // 🛡️ REFACTOR FIX: ดักล้างเซสชันอย่างเป็นระบบ 
+    if (typeof logout === 'function') {
+      logout(); // ล้างสเตทแกนกลางในหน่วยความจำ React ทันที ป้องกันสเตทค้างข้ามหน้า
+    } else {
+      localStorage.removeItem('user'); 
+      // 🎯 FORCE RELOAD OPTION: ในกรณีไม่มีระบบเคลียร์สเตทส่วนกลาง การใช้ window.location.href จะปลอดภัยที่สุด 
+      // เพื่อล้างหน่วยความจำ SPA ใหม่ทั้งหมด ป้องกันบั๊กการดีดกลับหน้าเดิมออโต้
+      window.location.href = '/login';
+      return;
+    }
+    router.push('/login'); 
   };
 
   return (
-    // คุมโทนระบบ Layout สัดส่วนความลาดชันมินิมอลพาสเทลตามมาตรฐาน Design System Tokens ของโปรเจกต์
     <div className='flex flex-col justify-center items-center w-full text-center min-h-screen bg-[#D0F8FF] font-sans antialiased text-[#432C81] px-4 animate-fade-in'>
       <div className='max-w-md w-full bg-white rounded-3xl p-8 shadow-xl border border-purple-50/40 space-y-6'>
         
-        {/* ส่วนหัวข้อต้อนรับสื่อแบรนด์เนม MindBetter - ปรับแก้จาก font-bold เป็น font-semibold ทั้งหมดเพื่อความมินิมอลโปร่งตา */}
+        {/* ส่วนหัวข้อต้อนรับสื่อแบรนด์เนม MindBetter */}
         <div className="space-y-1">
           <div className='text-2xl font-semibold opacity-90'>Welcome to</div>
           <h1 className='text-4xl font-semibold tracking-tight text-[#432C81]'>MindBetter</h1>
         </div>
         
-        {/* เส้นระยะแบ่งช่องไฟช่องว่าง (Whitespace Management) เพื่อความโปร่งสบายตาแบบมินิมอล */}
         <div className='h-[5px]' />
         
-        {/* บล็อกสถิติกล่องแสดงผลชื่อบัญชีอีเมลของผู้ล็อกอินเข้ารับการตรวจทานระบบ */}
-        <div className="bg-[#FAF9FE] border border-gray-100 p-4 rounded-2xl shadow-3xs">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">สิทธิ์บัญชีผู้เข้าใช้งานในระบบ</span>
-          {/* 📐 UI REFINEMENT FIX: แก้ไขจาก font-bold เป็น font-semibold ตรงข้อมูลสถิติอีเมลสะสม เพื่อไม่ให้ฟอนต์ Poppins ทึบหรือหนาเทอะทะจนเกินไป */}
-          <div className='text-base sm:text-lg font-semibold text-[#432C81] truncate px-2'>
-            {authenticated?.email}
+        {/* บล็อกแสดงสิทธิ์โปรไฟล์ผู้ใช้งาน */}
+        <div className="bg-[#FAF9FE] border border-gray-100 p-4 rounded-2xl shadow-3xs text-left space-y-3">
+          <div>
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">อีเมลผู้ใช้งาน (Account Email)</span>
+            <div className='text-sm sm:text-base font-semibold text-[#432C81] truncate px-1'>
+              {authenticated?.email || "-"}
+            </div>
+          </div>
+          
+          <div className="border-t border-gray-100/50 pt-2 flex justify-between items-center">
+            <div>
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">สิทธิ์ระบบ (Role Priority)</span>
+              <div className='text-xs font-semibold text-purple-700 uppercase px-1'>
+                🎭 {authenticated?.role_name || "user"}
+              </div>
+            </div>
+            
+            {/* 🎨 DYNAMIC PRIORITY BADGE: ตกแต่งป้ายสิทธิ์เพิ่มเติมเพื่อเพิ่มมิติความสวยงาม */}
+            <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${authenticated?.role_name === 'admin' ? 'bg-red-50 text-red-500 border-red-100' : 'bg-blue-50 text-blue-500 border-blue-100'}`}>
+              Active Session
+            </span>
           </div>
         </div>
         
         <div className='h-[5px]' />
         
-        {/* บล็อกจัดสัดส่วนชุดปุ่มกดสัมผัสออกจากระบบ (Logout Controller Component) */}
+        {/* ปุ่มกดสัมผัสออกจากระบบ (Logout Controller Component) */}
         <div className='flex flex-col items-center w-full'>
           <button 
-            onClick={handleUserLogout} // สั่งผูก Event เรียกใช้งานฟังก์ชันทำลายก้อน Token เมื่อโดนนิ้วคลิกจิ้มปุ่ม
-            // 📏 MOBILE TOUCH TARGET LOGIC: ล็อกน้ำหนักส่วนสูงขั้นต่ำของปุ่มกดสัมผัสไม่ต่ำกว่า 48px เพื่อให้ทัชสกรีนได้ง่าย ลื่นไหลตรงตามหลักสากล
+            type="button"
+            onClick={handleUserLogout} 
             className='w-full min-h-[48px] max-w-[300px] rounded-xl bg-white border border-gray-200 shadow-3xs text-xs font-semibold text-red-500 hover:bg-red-50 hover:text-red-600 hover:border-red-100 cursor-pointer active:scale-[0.98] transition-all duration-200 text-center flex items-center justify-center'
           >
             🚪 ออกจากระบบบัญชีผู้ใช้
