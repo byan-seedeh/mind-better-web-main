@@ -1,11 +1,11 @@
-"use client"; 
+"use client";
 
-import React, { useEffect, useState, useMemo } from "react"; 
-import { useRouter } from "next/navigation"; 
-import { useAuthen } from "@/utils/useAuthen"; 
-import { showErrorDialog, showSuccessDialog } from "@/utils/webDialog"; 
-import Navbar from "@/components/Navbar"; 
-import axios from "axios"; 
+import React, { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthen } from "@/utils/useAuthen";
+import { showErrorDialog, showSuccessDialog } from "@/utils/webDialog";
+import Navbar from "@/components/Navbar";
+import axios from "axios";
 
 const CONFIG = {
   API_BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api",
@@ -33,102 +33,100 @@ const ASSESSMENT_CHOICES = {
 };
 
 export default function AssessmentPage() {
-  const router = useRouter(); 
-  const { isLoading, authenticated } = useAuthen(); 
+  const router = useRouter();
+  const { isLoading, authenticated } = useAuthen();
 
-  const [currentFormCode, setCurrentFormCode] = useState("2q"); 
-  const [questionsList, setQuestionsList] = useState([]); 
-  const [answersMap, setAnswersMap] = useState({}); 
-  const [loadingData, setLoadingData] = useState(false); 
+  const [currentFormCode, setCurrentFormCode] = useState("2q");
+  const [questionsList, setQuestionsList] = useState([]);
+  const [answersMap, setAnswersMap] = useState({});
+  const [loadingData, setLoadingData] = useState(false);
 
-  // 🛡️ SECURITY AUTOMATION GUARD
+  // Security Router Guard
   useEffect(() => {
     if (!isLoading && !authenticated) {
-      router.replace(CONFIG.ROUTES.LOGIN); 
+      router.replace(CONFIG.ROUTES.LOGIN);
     }
   }, [isLoading, authenticated, router]);
 
+  // Fetch Questions Engine
   const fetchAssessmentForm = async (formCode) => {
-    setLoadingData(true); 
-    setQuestionsList([]); // 🎯 REFACTOR FIX: เคลียร์คำถามเก่าออกทันที เพื่อป้องกันหน้าจอแมปช้อยส์ขัดแย้งขณะยิงข้อมูลข้ามเน็ตเวิร์ก
+    setLoadingData(true);
     try {
       const res = await axios.get(`${CONFIG.API_BASE_URL}/assessment/form/${formCode}`);
-      if (res.data && res.data.result) {
-        setQuestionsList(res.data.data.questions); 
+      if (res.data && res.data.data) {
+        const questions = res.data.data.questions || [];
+        setQuestionsList(questions);
         
         const initialAnswers = {};
-        res.data.data.questions.forEach((q) => { initialAnswers[q.id] = null; });
-        setAnswersMap(initialAnswers); 
+        questions.forEach((q) => { 
+          initialAnswers[q.id] = null; 
+        });
+        setAnswersMap(initialAnswers);
       }
     } catch (err) {
-      console.error("Fetch current assessment questions core engine error:", err);
-      showErrorDialog("ไม่สามารถดึงข้อมูลแบบประเมินจากฐานข้อมูลได้");
+      console.error("Fetch assessment form error:", err);
     } finally {
-      setLoadingData(false); 
+      setLoadingData(false);
     }
   };
 
   useEffect(() => {
     if (authenticated) {
-      fetchAssessmentForm(currentFormCode); 
+      fetchAssessmentForm(currentFormCode);
     }
   }, [currentFormCode, authenticated]);
 
   const handleSelectScore = (questionId, scoreValue) => {
     setAnswersMap((prevMap) => ({
       ...prevMap,
-      [questionId]: scoreValue 
+      [questionId]: scoreValue
     }));
   };
 
   const currentChoicesOptions = useMemo(() => {
-    return ASSESSMENT_CHOICES[currentFormCode] || ASSESSMENT_CHOICES["9q"]; 
+    return ASSESSMENT_CHOICES[currentFormCode] || ASSESSMENT_CHOICES["9q"];
   }, [currentFormCode]);
 
+  // Submit Pipeline
   const handleSubmitAssessment = async () => {
     const unansweredCount = questionsList.filter((q) => answersMap[q.id] === null).length;
     
-    if (unansweredCount > 0) { 
-      showErrorDialog("กรุณาตอบคำถามทางการแพทย์ให้ครบถ้วนทุกข้อก่อนกดปุ่มส่งผลประเมินครับ"); 
-      return; 
-    }
-
-    const answersPayloadArray = questionsList.map((q) => answersMap[q.id]);
-    
-    // 🎯 REFACTOR FIX: ตรวจสอบความปลอดภัยคาร์ดินาลิตี้ของวัตถุไอดี ป้องกัน Foreign Key ใน MySQL พังหลุดลุ่ย
-    const currentUserId = authenticated?.user_id || (localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).user_id : null);
-    
-    if (!currentUserId) {
-      showErrorDialog("ไม่พบข้อมูลเซสชันผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่อีกครั้ง");
-      router.replace(CONFIG.ROUTES.LOGIN);
+    if (unansweredCount > 0) {
+      showErrorDialog("กรุณาตอบคำถามทางการแพทย์ให้ครบถ้วนทุกข้อก่อนกดปุ่มส่งผลประเมินครับ");
       return;
     }
 
+    const answersPayloadArray = questionsList.map((q) => answersMap[q.id]);
+
     try {
       const res = await axios.post(`${CONFIG.API_BASE_URL}/assessment/save`, {
-        user_id: currentUserId, 
-        assessment_code: currentFormCode, 
-        answers: answersPayloadArray 
+        user_id: authenticated.user_id,
+        assessment_code: currentFormCode,
+        answers: answersPayloadArray
       });
 
-      if (res.data && res.data.result) { 
-        const nextActionRouteToken = res.data.data.next_action; 
+      if (res.data && res.data.result) {
+        const nextActionRouteToken = res.data.data?.next_action;
         
-        if (nextActionRouteToken === "9q" || nextActionRouteToken === "8q") { 
-          showSuccessDialog(`ระบบประเมินผลเสร็จสิ้น: เพื่อความปลอดภัยของท่าน ระบบจะนำเข้าสู่ขั้นการทำแบบประเมิน ${nextActionRouteToken.toUpperCase()} ต่อเนื่องทันที`);
-          setCurrentFormCode(nextActionRouteToken); 
-        } else { 
-          router.push(CONFIG.ROUTES.HISTORY); 
+        if (nextActionRouteToken === "9q" || nextActionRouteToken === "8q") {
+          showSuccessDialog(`ระบบตรวจพบเงื่อนไขความเสี่ยงสะสมต่อเนื่องตามเกณฑ์ สธ. เพื่อความปลอดภัยของท่านระบบจะนำเข้าสู่ขั้นการทำแบบประเมิน ${nextActionRouteToken.toUpperCase()} ต่อเนื่องทันที`);
+          setCurrentFormCode(nextActionRouteToken);
+        } else {
+          router.push(CONFIG.ROUTES.HISTORY);
         }
       }
     } catch (e) {
-      console.error("Process clinical conditional routing submission failure architecture error:", e);
-      showErrorDialog("เกิดข้อผิดพลาดในการส่งข้อมูลประเมินผลหลังบ้าน");
+      console.error("Submission workflow error:", e);
+      showErrorDialog("เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง");
     }
   };
 
   if (isLoading || !authenticated) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#E8FAFF] text-sm font-semibold text-[#432C81]">กำลังโหลดหน้าต่างแบบประเมิน...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#E8FAFF] text-sm font-semibold text-[#432C81]">
+        กำลังโหลดหน้าต่างแบบประเมิน...
+      </div>
+    );
   }
 
   return (
@@ -138,8 +136,8 @@ export default function AssessmentPage() {
       <main className="mx-auto w-full max-w-4xl px-4 py-12">
         <div className="rounded-3xl bg-white p-6 md:p-10 shadow-xl border border-purple-50/20">
           
-          {/* HEADER AREA */}
-          <div className="border-b pb-6 text-center animate-fade-in">
+          {/* Header */}
+          <div className="border-b pb-6 text-center">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-white bg-[#432C81] px-2.5 py-1 rounded-md">
               Current Screening Mode: {currentFormCode.toUpperCase()}
             </span>
@@ -148,23 +146,21 @@ export default function AssessmentPage() {
               {currentFormCode === "9q" && "แบบประเมินโรคซึมเศร้าฉบับมาตรฐาน (9Q)"}
               {currentFormCode === "8q" && "แบบประเมินความเสี่ยงและพฤติกรรมทำร้ายตนเอง (8Q)"}
             </h1>
-            <p className="text-xs text-gray-500 mt-1.5 font-semibold">โปรดเลือกคำตอบที่ตรงกับความรู้สึกที่แท้จริงของคุณในช่วง 2 สัปดาห์ที่ผ่านมามากที่สุด</p>
+            <p className="text-xs text-gray-500 mt-1.5 font-semibold">
+              โปรดเลือกคำตอบที่ตรงกับความรู้สึกที่แท้จริงของคุณในช่วง 2 สัปดาห์ที่ผ่านมามากที่สุด
+            </p>
           </div>
 
+          {/* Questions Matrix */}
           {loadingData ? (
             <div className="py-20 text-center font-semibold text-gray-400 text-xs animate-pulse">
               ⏳ กำลังซิงค์โครงสร้างคลังคำถามจากระบบฐานข้อมูลกลาง...
             </div>
           ) : (
             <div className="mt-8 space-y-8">
-              
-              {/* DYNAMIC QUESTIONS MATRIX GENERATOR */}
               {questionsList.map((q, index) => {
                 return (
-                  <div 
-                    key={q.id} 
-                    className="pb-8 border-b border-gray-100 flex flex-col items-center justify-center text-center space-y-4 animate-fade-in"
-                  >
+                  <div key={q.id} className="pb-8 border-b border-gray-100 flex flex-col items-center justify-center text-center space-y-4">
                     <div className="max-w-2xl">
                       <span className="text-xs font-semibold text-[#F45CB0] uppercase tracking-wider block mb-1">
                         คำถามข้อที่ {index + 1}
@@ -174,17 +170,24 @@ export default function AssessmentPage() {
                       </h2>
                     </div>
 
+                    {/* Choices Options */}
                     <div className="flex flex-wrap items-center justify-center gap-3 pt-1 w-full max-w-2xl">
                       {currentChoicesOptions.map((option) => {
-                        const isSelected = answersMap[q.id] === option.val; 
+                        const isSelected = answersMap[q.id] === option.val;
                         return (
                           <div key={option.val} className="w-full sm:w-auto">
                             <button
-                              type="button" 
-                              onClick={() => handleSelectScore(q.id, option.val)} 
-                              className={`min-h-[46px] w-full sm:w-[220px] rounded-xl px-5 py-3 text-xs font-semibold border transition-all cursor-pointer flex items-center justify-start gap-3 shadow-3xs ${isSelected ? "bg-[#432C81] text-white border-[#432C81] shadow-md scale-[1.005]" : "bg-white text-gray-500 hover:bg-[#FAF9FE] border-gray-200"}`}
+                              type="button"
+                              onClick={() => handleSelectScore(q.id, option.val)}
+                              className={`min-h-[46px] w-full sm:w-[220px] rounded-xl px-5 py-3 text-xs font-semibold border transition-all cursor-pointer flex items-center justify-start gap-3 shadow-3xs ${
+                                isSelected 
+                                  ? "bg-[#432C81] text-white border-[#432C81] shadow-md scale-[1.005]" 
+                                  : "bg-white text-gray-500 hover:bg-[#FAF9FE] border-gray-200"
+                              }`}
                             >
-                              <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0 ${isSelected ? "bg-white text-[#432C81]" : "bg-gray-100 text-gray-600"}`}>
+                              <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0 ${
+                                isSelected ? "bg-white text-[#432C81]" : "bg-gray-100 text-gray-600"
+                              }`}>
                                 {option.val}
                               </span>
                               <span className="truncate text-left font-semibold">{option.text}</span>
@@ -193,16 +196,15 @@ export default function AssessmentPage() {
                         );
                       })}
                     </div>
-
                   </div>
                 );
               })}
 
-              {/* SUBMISSION CORE ACTION BUTTON */}
+              {/* Submit Action */}
               <div className="pt-4 flex justify-center items-center">
                 <button
-                  type="button" 
-                  onClick={handleSubmitAssessment} 
+                  type="button"
+                  onClick={handleSubmitAssessment}
                   className="w-full sm:w-[280px] rounded-2xl bg-[#F45CB0] hover:bg-[#e04fa0] py-3.5 text-sm font-semibold text-white shadow-md active:scale-[0.98] transition-all duration-200 text-center tracking-wide flex items-center justify-center gap-2 cursor-pointer"
                 >
                   💾 บันทึกและทำขั้นตอนถัดไป ➔

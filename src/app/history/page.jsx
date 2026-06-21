@@ -1,199 +1,174 @@
-"use client"; 
+"use client";
 
-import React, { useEffect, useMemo, useState } from "react"; 
-import { useRouter } from "next/navigation"; 
-import { useAuthen } from "@/utils/useAuthen"; 
-import { getPhq9History } from "@/services/historyService"; 
-import Navbar from "@/components/Navbar"; 
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthen } from "@/utils/useAuthen";
+import { getPhq9History } from "@/services/historyService";
+import Navbar from "@/components/Navbar";
 
 const CONFIG = {
-  "2q": { title: "แบบคัดกรองภาวะซึมเศร้าเบื้องต้น (2Q)", max: 2 }, 
-  "9q": { title: "แบบประเมินโรคซึมเศร้าฉบับมาตรฐาน (9Q)", max: 27 }, 
-  "8q": { title: "แบบประเมินความเสี่ยงและพฤติกรรมทำร้ายตนเอง (8Q)", max: 8 } 
+  "2q": { title: "แบบคัดกรองภาวะซึมเศร้าเบื้องต้น (2Q)", max: 2 },
+  "9q": { title: "แบบประเมินโรคซึมเศร้าฉบับมาตรฐาน (9Q)", max: 27 },
+  "8q": { title: "แบบประเมินความเสี่ยงและพฤติกรรมทำร้ายตนเอง (8Q)", max: 8 }
 };
 
 const normalizeType = (raw) => {
-  const s = String(raw || "").toLowerCase().replace(/[^a-z0-9]/g, ""); 
-  if (s === "q2" || /^(phq)?2q?$/.test(s) || s === "2q") return "2q"; 
-  if (s === "q9" || /^(phq)?9q?$/.test(s) || s === "9q") return "9q"; 
-  if (s === "q8" || /^(phq)?8q?$/.test(s) || s === "8q") return "8q"; 
-  return null; 
+  const s = String(raw || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (s === "q2" || /^(phq)?2q?$/.test(s) || s === "2q") return "2q";
+  if (s === "q9" || /^(phq)?9q?$/.test(s) || s === "9q") return "9q";
+  if (s === "q8" || /^(phq)?8q?$/.test(s) || s === "8q") return "8q";
+  return null;
 };
 
 const severityOf = (type, score) => {
-  if (type === "2q") return score > 0 ? "พบความเสี่ยงภาวะซึมเศร้า" : "ปกติ"; 
-  if (type === "9q") { 
-    if (score >= 20) return "ซึมเศร้ารุนแรง"; 
-    if (score >= 15) return "ซึมเศร้าค่อนข้างรุนแรง"; 
-    if (score >= 10) return "ซึมเศร้าปานกลาง"; 
-    if (score >= 5) return "ซึมเศร้าเล็กน้อย"; 
-    return "ปกติ"; 
+  if (type === "2q") return score > 0 ? "พบความเสี่ยงภาวะซึมเศร้า" : "ปกติ";
+  if (type === "9q") {
+    if (score >= 20) return "ซึมเศร้ารุนแรง";
+    if (score >= 15) return "ซึมเศร้าค่อนข้างรุนแรง";
+    if (score >= 10) return "ซึมเศร้าปานกลาง";
+    if (score >= 5) return "ซึมเศร้าเล็กน้อย";
+    return "ปกติ";
   }
-  if (type === "8q") { 
-    if (score >= 8) return "ระดับความเสี่ยงทำร้ายตนเอง: รุนแรงมาก"; 
-    if (score >= 5) return "ระดับความเสี่ยงทำร้ายตนเอง: ปานกลาง"; 
-    if (score >= 1) return "ระดับความเสี่ยงทำร้ายตนเอง: น้อย"; 
-    return "ไม่มีความเสี่ยงทำร้ายตนเอง"; 
+  if (type === "8q") {
+    if (score >= 8) return "ระดับความเสี่ยงทำร้ายตนเอง: รุนแรงมาก";
+    if (score >= 5) return "ระดับความเสี่ยงทำร้ายตนเอง: ปานกลาง";
+    if (score >= 1) return "ระดับความเสี่ยงทำร้ายตนเอง: น้อย";
+    return "ไม่มีความเสี่ยงทำร้ายตนเอง";
   }
-  return "ประเมินผลสำเร็จ"; 
+  return "ประเมินผลสำเร็จ";
 };
 
 const toItem = (x) => {
-  const rawType = x.assessment_code ?? x.code ?? x.assessment_type ?? x.type ?? x.form_type ?? x.form; 
-  let type = normalizeType(rawType); 
+  const rawType = x.assessment_code ?? x.code ?? x.assessment_type ?? x.type ?? x.form_type ?? x.form;
+  let type = normalizeType(rawType);
 
-  const answers = Array.isArray(x.answers) 
-    ? x.answers.map((v) => Number(v)).filter((v) => Number.isFinite(v)) 
-    : []; 
+  const answers = Array.isArray(x.answers)
+    ? x.answers.map((v) => Number(v)).filter((v) => Number.isFinite(v))
+    : [];
 
-  if (!type) { 
-    const maxFromApi = Number(x.max_score || x.total_score || x.score || 0); 
-    if (answers.length === 2 || maxFromApi === 2) type = "2q"; 
-    else if (answers.length === 8 || maxFromApi === 8) type = "8q"; 
-    else if (answers.length === 9 || maxFromApi === 27) type = "9q"; 
-    else type = "9q"; 
+  if (!type) {
+    const maxFromApi = Number(x.max_score || x.total_score || x.score || 0);
+    if (answers.length === 2 || maxFromApi === 2) type = "2q";
+    else if (answers.length === 8 || maxFromApi === 8) type = "8q";
+    else if (answers.length === 9 || maxFromApi === 27) type = "9q";
+    else type = "9q";
   }
 
-  const max = CONFIG[type]?.max || 27; 
-  let score = Number(x.total_score || x.score || 0); 
-  score = Math.min(Math.max(score, 0), max); 
+  const max = CONFIG[type]?.max || 27;
+  let score = Number(x.total_score || x.score || 0);
+  score = Math.min(Math.max(score, 0), max);
 
-  const created = new Date(x.created_at || x.createdAt || x.date || 0); 
+  const created = new Date(x.created_at || x.createdAt || x.date || 0);
 
-  return { 
-    id: x.id ?? `${type}-${created.getTime()}`, 
-    type, 
-    score, 
-    max, 
-    created, 
-    answers, 
-    result_text: x.result_text || severityOf(type, score), 
-    recommended: x.recommended_action || x.recommended || "" 
+  return {
+    id: x.id ?? `${type}-${created.getTime()}`,
+    type,
+    score,
+    max,
+    created,
+    answers,
+    result_text: x.result_text || severityOf(type, score),
+    recommended: x.recommended_action || x.recommended || ""
   };
 };
 
 export default function HistoryPage() {
-  const router = useRouter(); 
-  const { isLoading, authenticated } = useAuthen(); 
+  const router = useRouter();
+  const { isLoading, authenticated } = useAuthen();
 
-  const [items, setItems] = useState([]); 
-  const [loading, setLoading] = useState(true); 
-  const [err, setErr] = useState(""); 
-  const [expandedSessions, setExpandedSessions] = useState({}); 
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [expandedSessions, setExpandedSessions] = useState({});
 
   useEffect(() => {
-    if (isLoading) return; 
-    if (!authenticated) { 
-      router.replace("/login"); 
-      return; 
+    if (isLoading) return;
+    if (!authenticated) {
+      router.replace("/login");
+      return;
     }
 
-    const loadAssessmentHistory = async () => { 
-      setLoading(true); 
-      setErr(""); 
+    const loadAssessmentHistory = async () => {
+      setLoading(true);
+      setErr("");
       try {
-        const res = await getPhq9History(authenticated.user_id); 
-        if (res?.result) { 
-          const list = (Array.isArray(res.data) ? res.data : []).map(toItem); 
-          setItems(list); 
+        const res = await getPhq9History(authenticated.user_id);
+        if (res?.result) {
+          const list = (Array.isArray(res.data) ? res.data : []).map(toItem);
+          setItems(list);
         } else {
-          throw new Error("Failed to load data"); 
+          throw new Error("Failed to load data");
         }
       } catch (e) {
-        setErr("ไม่สามารถดึงประวัติการทำแบบประเมินได้"); 
+        setErr("ไม่สามารถดึงประวัติการทำแบบประเมินได้");
       } finally {
-        setLoading(false); 
+        setLoading(false);
       }
     };
 
-    loadAssessmentHistory(); 
-  }, [isLoading, authenticated, router]); 
+    loadAssessmentHistory();
+  }, [isLoading, authenticated, router]);
 
   const groupedSessions = useMemo(() => {
-    if (!items || !items.length) return []; 
-    const sorted = [...items].sort((a, b) => a.created - b.created); 
-    const sessions = []; 
+    if (!items || !items.length) return [];
+    const sorted = [...items].sort((a, b) => a.created - b.created);
+    const sessions = [];
 
-    sorted.forEach((item) => { 
-      const itemTime = item.created.getTime(); 
-      const itemDateKey = item.created.toDateString(); 
-      const cleanTypeCode = String(item.type || "9q").toLowerCase(); 
+    sorted.forEach((item) => {
+      const itemTime = item.created.getTime();
+      const itemDateKey = item.created.toDateString();
+      const cleanTypeCode = String(item.type || "9q").toLowerCase();
 
       const existingSession = sessions.find((s) => {
-        const sessionTime = new Date(s.timestamp).getTime(); 
-        const sessionDateKey = new Date(s.timestamp).toDateString(); 
+        const sessionTime = new Date(s.timestamp).getTime();
+        const sessionDateKey = new Date(s.timestamp).toDateString();
         return sessionDateKey === itemDateKey && Math.abs(sessionTime - itemTime) < 30 * 60 * 1000 && !s.forms[cleanTypeCode];
       });
 
-      if (existingSession) { 
-        existingSession.forms[cleanTypeCode] = item; 
-      } else { 
-        sessions.push({ 
-          id: `session-${item.id}-${itemTime}`, 
-          timestamp: item.created, 
-          forms: { [cleanTypeCode]: item } 
+      if (existingSession) {
+        existingSession.forms[cleanTypeCode] = item;
+      } else {
+        sessions.push({
+          id: `session-${item.id}-${itemTime}`,
+          timestamp: item.created,
+          forms: { [cleanTypeCode]: item }
         });
       }
     });
 
-    return sessions.reverse(); 
-  }, [items]); 
+    return sessions.reverse();
+  }, [items]);
 
   const summaryStats = useMemo(() => {
-    const totalCount = groupedSessions.length; 
-    let latestScore = 0; 
-    let trendDirection = "none"; 
+    const totalCount = groupedSessions.length;
+    let latestScore = 0;
+    let trendDirection = "none";
 
-    if (totalCount > 0) { 
-      const latestSession = groupedSessions[0]; 
+    if (totalCount > 0) {
+      const latestSession = groupedSessions[0];
       
-      if (latestSession.forms['9q']) latestScore = latestSession.forms['9q'].score; 
-      else if (latestSession.forms['8q']) latestScore = latestSession.forms['8q'].score; 
-      else if (latestSession.forms['2q']) latestScore = latestSession.forms['2q'].score; 
+      if (latestSession.forms['9q']) latestScore = latestSession.forms['9q'].score;
+      else if (latestSession.forms['8q']) latestScore = latestSession.forms['8q'].score;
+      else if (latestSession.forms['2q']) latestScore = latestSession.forms['2q'].score;
 
-      if (totalCount >= 2) { 
-        const currentSession = groupedSessions[0]; 
-        const previousSession = groupedSessions[1]; 
+      if (totalCount >= 2) {
+        const currentSession = groupedSessions[0];
+        const previousSession = groupedSessions[1];
 
-        let currentActiveScore = currentSession.forms['9q']?.score || currentSession.forms['8q']?.score || currentSession.forms['2q']?.score || 0; 
-        let previousActiveScore = previousSession.forms['9q']?.score || previousSession.forms['8q']?.score || previousSession.forms['2q']?.score || 0; 
+        let currentActiveScore = currentSession.forms['9q']?.score || currentSession.forms['8q']?.score || currentSession.forms['2q']?.score || 0;
+        let previousActiveScore = previousSession.forms['9q']?.score || previousSession.forms['8q']?.score || previousSession.forms['2q']?.score || 0;
 
-        if (currentActiveScore > previousActiveScore) trendDirection = "up"; 
-        else if (currentActiveScore < previousActiveScore) trendDirection = "down"; 
-        else trendDirection = "same"; 
+        if (currentActiveScore > previousActiveScore) trendDirection = "up";
+        else if (currentActiveScore < previousActiveScore) trendDirection = "down";
+        else trendDirection = "same";
       }
     }
 
-    return { totalCount, latestScore, trendDirection }; 
-  }, [groupedSessions]); 
-
-  const chartPointsData = useMemo(() => {
-    const chronologically = [...groupedSessions].reverse(); 
-    return chronologically.map((s, index) => {
-      let activeValueScore = 0; 
-      let maxScaleCeil = 27; 
-
-      if (s.forms['9q']) { 
-        activeValueScore = s.forms['9q'].score; 
-        maxScaleCeil = CONFIG['9q'].max; 
-      } else if (s.forms['8q']) { 
-        activeValueScore = s.forms['8q'].score; 
-        maxScaleCeil = CONFIG['8q'].max; 
-      } else if (s.forms['2q']) { 
-        activeValueScore = s.forms['2q'].score; 
-        maxScaleCeil = CONFIG['2q'].max; 
-      }
-
-      return {
-        roundLabel: `${index + 1}`, 
-        scoreValue: activeValueScore, 
-        maxScale: maxScaleCeil 
-      };
-    });
-  }, [groupedSessions]); 
+    return { totalCount, latestScore, trendDirection };
+  }, [groupedSessions]);
 
   const toggleSession = (id) => {
-    setExpandedSessions(prev => ({ ...prev, [id]: !prev[id] })); 
+    setExpandedSessions(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   return (
@@ -203,6 +178,7 @@ export default function HistoryPage() {
       <main className="mx-auto w-full max-w-5xl px-4 py-8">
         <div className="rounded-3xl bg-white p-6 md:p-8 shadow-xl border border-purple-50/20">
           
+          {/* Header Dashboard */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-[#432C81]">ประวัติการประเมินสุขภาพจิต</h1>
@@ -243,71 +219,7 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          {/* แผงกราฟแนวโน้มคะแนน Pure SVG */}
-          {chartPointsData.length >= 2 && (
-            <div className="mt-6 rounded-3xl border border-purple-100/70 bg-[#FAF9FE] p-5">
-              <h3 className="text-xs font-semibold text-[#432C81] mb-4">📈 กราฟเส้นแสดงแนวโน้มความลาดชันคะแนนดิบประมวลผลจากจำนวนครั้งการทำประเมินจริง</h3>
-              <div className="relative w-full h-56 bg-white rounded-2xl border border-gray-100 p-4 flex items-end justify-between overflow-hidden">
-                <div className="absolute inset-x-0 top-1/4 border-b border-gray-100 border-dashed w-full"></div>
-                <div className="absolute inset-x-0 top-2/4 border-b border-gray-100 border-dashed w-full"></div>
-                <div className="absolute inset-x-0 top-3/4 border-b border-gray-100 border-dashed w-full"></div>
-
-                <svg className="w-full h-full" style={{ overflow: 'visible' }}>
-                  <defs>
-                    <linearGradient id="historyTrendGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#432C81" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#432C81" stopOpacity="0.00" />
-                    </linearGradient>
-                  </defs>
-                  {(() => {
-                    const totalPoints = chartPointsData.length;
-                    const points = chartPointsData.map((d, i) => {
-                      const x = totalPoints > 1 ? 10 + (i / (totalPoints - 1)) * 80 : 50;
-                      const y = 80 - (d.scoreValue / d.maxScale) * 65;
-                      return { ...d, x, y };
-                    });
-
-                    let linePathString = "";
-                    let areaPathString = "";
-
-                    if (points.length > 0) {
-                      linePathString = `M ${points[0].x}% ${points[0].y}%`;
-                      for (let i = 0; i < points.length - 1; i++) {
-                        const p0 = points[i];
-                        const p1 = points[i + 1];
-                        const cpX1 = p0.x + (p1.x - p0.x) * 0.4;
-                        const cpY1 = p0.y;
-                        const cpX2 = p0.x + (p1.x - p0.x) * 0.6;
-                        const cpY2 = p1.y;
-                        linePathString += ` C ${cpX1}% ${cpY1}%, ${cpX2}% ${cpY2}%, ${p1.x}% ${p1.y}%`;
-                      }
-                      areaPathString = `${linePathString} L ${points[points.length - 1].x}% 85% L ${points[0].x}% 85% Z`;
-                    }
-
-                    return (
-                      <>
-                        {points.length > 1 && <path d={areaPathString} fill="url(#historyTrendGradient)" />}
-                        {points.length > 1 && <path d={linePathString} fill="none" stroke="#432C81" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
-                        {points.map((p, i) => (
-                          <g key={i}>
-                            <circle cx={`${p.x}%`} cy={`${p.y}%`} r="4.5" fill="#432C81" />
-                            <text x={`${p.x}%`} y={`calc(${p.y}% - 12px)`} textAnchor="middle" className="text-[10px] font-semibold fill-[#432C81]">
-                              {p.scoreValue} คะแนน
-                            </text>
-                            <text x={`${p.x}%`} y="106%" textAnchor="middle" className="text-[9px] fill-gray-400 font-semibold">
-                              ครั้งที่ {p.roundLabel}
-                            </text>
-                          </g>
-                        ))}
-                      </>
-                    );
-                  })()}
-                </svg>
-              </div>
-            </div>
-          )}
-
-          {/* รายการประวัติแบบควบรวม Accordion */}
+          {/* รายการประวัติแบบ Accordion รายข้อ */}
           <div className="mt-8">
             <h3 className="text-xs font-semibold text-[#432C81] mb-4">⏱️ บันทึกประวัติการคัดกรองสุขภาพจิตอย่างละเอียดแยกรายรอบการประเมิน</h3>
             
@@ -340,10 +252,7 @@ export default function HistoryPage() {
                     .join(", ");
 
                   return (
-                    <div 
-                      key={session.id} 
-                      className="rounded-2xl border border-gray-100 bg-[#FAF9FE] shadow-sm overflow-hidden transition-all duration-200"
-                    >
+                    <div key={session.id} className="rounded-2xl border border-gray-100 bg-[#FAF9FE] shadow-sm overflow-hidden transition-all duration-200">
                       <button 
                         onClick={() => toggleSession(session.id)} 
                         className="w-full flex items-center justify-between p-5 text-left hover:bg-[#F2EEFE] transition-colors cursor-pointer"
@@ -365,11 +274,14 @@ export default function HistoryPage() {
                         </div>
                       </button>
 
-                      {/* INNER DRAWER ANALYSIS */}
+                      {/* Drawer รายละเอียดภายใน */}
                       {isExpanded && ( 
-                        <div className="border-t bg-white p-5 space-y-5 animate-fade-in text-xs">
-                          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">📄 บันทึกรายละเอียดข้อมูลผลคะแนนดิบและข้อคำตอบแยกตามประเภทแบบฟอร์มประจำครั้งนี้</div>
+                        <div className="border-t bg-white p-5 space-y-5 text-xs animate-fade-in">
+                          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                            📄 บันทึกรายละเอียดข้อมูลผลคะแนนดิบและข้อคำตอบแยกตามประเภทแบบฟอร์มประจำครั้งนี้
+                          </div>
 
+                          {/* 2Q Section */}
                           {session.forms['2q'] && (
                             <div className="p-4 rounded-xl bg-green-50/40 border border-green-100 space-y-3">
                               <div className="flex items-center gap-2">
@@ -390,6 +302,7 @@ export default function HistoryPage() {
                             </div>
                           )}
 
+                          {/* 9Q Section */}
                           {session.forms['9q'] && (
                             <div className="p-4 rounded-xl bg-purple-50/40 border border-purple-100 space-y-3">
                               <div className="flex items-center gap-2">
@@ -413,6 +326,7 @@ export default function HistoryPage() {
                             </div>
                           )}
 
+                          {/* 8Q Section */}
                           {session.forms['8q'] && (
                             <div className="p-4 rounded-xl bg-red-50/40 border border-red-100 space-y-3">
                               <div className="flex items-center gap-2">

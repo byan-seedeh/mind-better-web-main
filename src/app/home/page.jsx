@@ -40,14 +40,20 @@ export default function HomePage() {
         
         {/* BANNER CARD BLOCK */}
         <div className="w-full rounded-3xl bg-white/70 border border-white shadow-sm flex flex-col items-center overflow-hidden pb-6 sm:pb-8 animate-fade-in">
-          <div className="w-full relative h-[160px] sm:h-[220px] md:h-[260px]">
-            <Image 
-              src="/assets/banner.png" 
-              alt="ตรวจสุขภาพใจวันนี้ ฟรีไม่มีค่าใช้จ่าย" 
-              fill
-              priority 
-              style={{ objectFit: 'cover' }} 
-            />
+          
+          {/* กรอบครอบดีไซน์แบนเนอร์ - ปรับความโค้งมนและ Padding เล็กน้อยเพื่อให้รูปภาพลอยเด่นอยู่ในบล็อก */}
+          <div className="w-full px-4 pt-4 sm:px-6 sm:pt-6">
+            <div className="w-full relative h-[160px] sm:h-[240px] md:h-[280px] bg-white rounded-2xl overflow-hidden shadow-2xs border border-purple-50/50">
+              <Image 
+                src="/assets/banner.png" 
+                alt="ตรวจสุขภาพใจวันนี้ ฟรีไม่มีค่าใช้จ่าย" 
+                fill
+                priority 
+                // ปรับให้ภาพเต็มในลักษณะ 'contain' เพื่อรักษาเนื้อหาภาพให้ครบถ้วนในกรอบ (หรือเปลี่ยนเป็น 'fill' หากภาพดีไซน์มาให้ยืดได้)
+                style={{ objectFit: 'contain' }} 
+                className="w-full h-full"
+              />
+            </div>
           </div>
 
           <div className="h-[20px] sm:h-[25px]" />
